@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>git-automation — Design System</title>
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <style>
+    /* styleguide-only scaffolding (NOT part of the design system) */
+    .sg-section { margin-top: var(--space-7); }
+    .sg-section > .eyebrow { display: block; margin-bottom: var(--space-2); }
+    .sg-section > h2 {
+      font-size: var(--text-lg); font-weight: var(--weight-semibold);
+      letter-spacing: var(--tracking-tight); margin-bottom: var(--space-1);
+    }
+    .sg-section > .sg-note { color: var(--text-secondary); margin-bottom: var(--space-4); max-width: 60ch; }
+    .sg-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+    .sg-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .sg-swatch { border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); }
+    .sg-swatch__chip { height: 64px; }
+    .sg-swatch__meta { padding: var(--space-2) var(--space-3); font-size: var(--text-xs); background: var(--surface); }
+    .sg-swatch__name { color: var(--text-primary); font-weight: var(--weight-medium); }
+    .sg-swatch__hex { color: var(--text-muted); font-family: var(--font-mono); }
+    .sg-hero { padding: var(--space-7) 0 var(--space-2); border-bottom: 1px solid var(--border); }
+    .sg-hero h1 { font-size: var(--text-2xl); letter-spacing: var(--tracking-tight); }
+    .sg-hero p { color: var(--text-secondary); margin-top: var(--space-2); max-width: 64ch; }
+    .sg-vocab { columns: 2; column-gap: var(--space-6); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-secondary); }
+    .sg-vocab code { color: var(--accent); }
+    .sg-vocab div { break-inside: avoid; margin-bottom: 4px; }
+    .sg-demo-frame { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-canvas); }
+    .sg-demo-frame .topbar { position: static; }
+    @media (max-width: 640px) { .sg-vocab { columns: 1; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- ===================================================================
+         A real .topbar so the frontend agent sees it in context
+         =================================================================== -->
+    <header class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__mark">g</span>
+        <span>git-automation</span>
+      </div>
+      <div class="topbar__context">
+        <div class="repo-meta">
+          <span class="repo-meta__item">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
+            <span class="mono truncate">webgate</span>
+          </span>
+          <span class="repo-meta__item">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+            <span class="mono">main</span>
+          </span>
+        </div>
+      </div>
+      <div class="topbar__actions">
+        <button class="btn btn--icon btn--sm" aria-label="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4"/></svg>
+        </button>
+        <button class="btn btn--secondary btn--sm">Open repo</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <div class="container stack stack--loose">
+
+        <!-- Hero -->
+        <div class="sg-hero stack stack--tight">
+          <span class="eyebrow">Design System</span>
+          <h1>git-automation — dark theme</h1>
+          <p>A premium developer-tool surface in the Linear / GitKraken register.
+             Every value below is driven by tokens in <span class="mono">css/tokens.css</span>;
+             components live in <span class="mono">css/app.css</span>. Copy the class names verbatim.</p>
+        </div>
+
+        <!-- ===== Palette ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Foundations</span>
+          <h2>Palette</h2>
+          <p class="sg-note">Cool blue-graphite layers with an iris-indigo accent and three semantic signals. Token names in mono.</p>
+          <div class="sg-grid">
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--bg-base)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">bg-base</div><div class="sg-swatch__hex">#0B0E14</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--surface)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">surface</div><div class="sg-swatch__hex">#12161F</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--surface-elevated)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">surface-elevated</div><div class="sg-swatch__hex">#1A1F2B</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--border-strong)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">border-strong</div><div class="sg-swatch__hex">#303A4D</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--text-primary)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">text-primary</div><div class="sg-swatch__hex">#E7EBF3</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--text-secondary)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">text-secondary</div><div class="sg-swatch__hex">#A6B0C3</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--accent)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">accent</div><div class="sg-swatch__hex">#6E8AFF</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--accent-solid)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">accent-solid</div><div class="sg-swatch__hex">#5468E6</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--success)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">success</div><div class="sg-swatch__hex">#3FBF8F</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--warning)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">warning</div><div class="sg-swatch__hex">#E2A53C</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--danger)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">danger</div><div class="sg-swatch__hex">#F26571</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--bg-inset)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">bg-inset</div><div class="sg-swatch__hex">#0C0F16</div></div></div>
+          </div>
+        </section>
+
+        <!-- ===== Typography ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Foundations</span>
+          <h2>Typography</h2>
+          <p class="sg-note">System sans for UI, monospace for refs &amp; output. No web fonts — renders offline.</p>
+          <div class="panel"><div class="panel__body stack">
+            <div style="font-size:var(--text-2xl); font-weight:var(--weight-semibold); letter-spacing:var(--tracking-tight)">Push to origin/main</div>
+            <div style="font-size:var(--text-xl); font-weight:var(--weight-semibold)">Repository status</div>
+            <div style="font-size:var(--text-md)">Body / base — 14px UI default for most copy.</div>
+            <div class="text-secondary" style="font-size:var(--text-sm)">Secondary 13px — supporting copy and labels.</div>
+            <div class="eyebrow">Overline · eyebrow label</div>
+            <div class="mono" style="color:var(--text-secondary)">$ git push origin main --set-upstream</div>
+          </div></div>
+        </section>
+
+        <!-- ===== Buttons ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Components</span>
+          <h2>Buttons</h2>
+          <p class="sg-note">Variants: primary, secondary, ghost, danger, icon. Plus sizes, disabled, and loading.</p>
+          <div class="panel"><div class="panel__body stack">
+            <div class="sg-row">
+              <button class="btn btn--primary">Continue</button>
+              <button class="btn btn--secondary">Cancel</button>
+              <button class="btn btn--ghost">Skip for now</button>
+              <button class="btn btn--danger">Discard changes</button>
+              <button class="btn btn--icon" aria-label="Settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L16.4 2h-4l-.4 2.6a7 7 0 0 0-1.7 1L7.9 4.5l-2 3.4L7.9 9.5a7 7 0 0 0 0 2L5.9 13l2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.07-.32.1-.66.1-1Z"/></svg>
+              </button>
+            </div>
+            <div class="sg-row">
+              <button class="btn btn--primary btn--sm">Small</button>
+              <button class="btn btn--primary">Default</button>
+              <button class="btn btn--primary btn--lg">Large</button>
+            </div>
+            <div class="sg-row">
+              <button class="btn btn--primary" disabled>Disabled</button>
+              <button class="btn btn--primary is-loading" disabled>Pushing…</button>
+              <button class="btn btn--secondary is-loading" disabled>Loading</button>
+            </div>
+            <div class="sg-row">
+              <button class="btn btn--primary btn--block" style="max-width:280px">Full-width (.btn--block)</button>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Form controls ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Components</span>
+          <h2>Form fields, inputs &amp; selects</h2>
+          <p class="sg-note">Labeled <span class="mono">.field</span> wrapper with hint and error states; <span class="mono">.input</span>, <span class="mono">.select</span>, and an affixed link.</p>
+          <div class="panel"><div class="panel__body">
+            <div class="stack" style="max-width:420px">
+              <div class="field">
+                <label class="field__label" for="sg-name">Git name</label>
+                <input class="input" id="sg-name" type="text" placeholder="Ada Lovelace" value="Ada Lovelace" />
+              </div>
+              <div class="field">
+                <label class="field__label" for="sg-email">Git email</label>
+                <input class="input" id="sg-email" type="email" placeholder="you@example.com" />
+                <span class="field__hint">Used for commit authorship. Stored in your global git config.</span>
+              </div>
+              <div class="field has-error">
+                <label class="field__label" for="sg-token">GitHub token</label>
+                <input class="input" id="sg-token" type="password" value="bad-token" />
+                <span class="field__error">That token was rejected. Generate a new one with repo scope.</span>
+              </div>
+              <div class="field">
+                <label class="field__label" for="sg-remote">Remote</label>
+                <select class="select" id="sg-remote">
+                  <option>origin — github.com/you/webgate</option>
+                  <option>upstream — github.com/acme/webgate</option>
+                  <option>fork — github.com/teammate/webgate</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field__label">Disabled input</label>
+                <input class="input" type="text" value="read only" disabled />
+              </div>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Dropdown ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Components</span>
+          <h2>Dropdown menu</h2>
+          <p class="sg-note">A popover for the remote selector. Toggle <span class="mono">.is-open</span> on <span class="mono">.dropdown</span> (demo button below).</p>
+          <div class="panel"><div class="panel__body">
+            <div class="dropdown" id="sg-dropdown">
+              <button class="btn btn--secondary" onclick="document.getElementById('sg-dropdown').classList.toggle('is-open')">
+                <span>Remote: <span class="mono">origin</span></span>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="dropdown__menu" role="listbox">
+                <button class="dropdown__item" role="option" aria-selected="true">origin <span class="mono">upstream</span></button>
+                <button class="dropdown__item" role="option">upstream <span class="mono">github</span></button>
+                <button class="dropdown__item" role="option">fork <span class="mono">github</span></button>
+                <div class="dropdown__sep"></div>
+                <button class="dropdown__item" role="option">Add a remote…</button>
+              </div>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Badges / status / spinner ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Components</span>
+          <h2>Badges, status dots &amp; spinner</h2>
+          <div class="panel"><div class="panel__body sg-row">
+            <span class="badge">2 ahead</span>
+            <span class="badge badge--accent">main</span>
+            <span class="badge badge--success">clean</span>
+            <span class="badge badge--warning">3 behind</span>
+            <span class="badge badge--danger">conflicts</span>
+            <span class="cluster"><span class="status-dot status-dot--ok"></span> connected</span>
+            <span class="cluster"><span class="status-dot status-dot--warn"></span> syncing</span>
+            <span class="cluster"><span class="status-dot status-dot--err"></span> error</span>
+            <span class="cluster"><span class="spinner"></span> working…</span>
+          </div></div>
+        </section>
+
+        <!-- ===== Console ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Components</span>
+          <h2>Command output console</h2>
+          <p class="sg-note">Monospace output panel with <span class="mono">.is-success</span> / <span class="mono">.is-error</span> result states.</p>
+          <div class="stack">
+            <div class="console is-success">
+              <div class="console__head">
+                <span class="status-dot status-dot--ok"></span>
+                <span>git push origin main</span>
+                <span class="badge badge--success">Success</span>
+              </div>
+              <pre class="console__body"><span class="out-dim">$ git push origin main</span>
+Enumerating objects: 12, done.
+Counting objects: 100% (12/12), done.
+Writing objects: 100% (7/7), 1.21 KiB, done.
+To github.com:you/webgate.git
+<span class="out-ok">   a1b2c3d..e4f5g6h  main -> main</span></pre>
+            </div>
+            <div class="console is-error">
+              <div class="console__head">
+                <span class="status-dot status-dot--err"></span>
+                <span>git pull origin main</span>
+                <span class="badge badge--danger">Exit 1</span>
+              </div>
+              <pre class="console__body"><span class="out-dim">$ git pull origin main</span>
+<span class="out-err">error: Your local changes would be overwritten by merge.</span>
+<span class="out-err">Please commit your changes or stash them before you merge.</span>
+Aborting</pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Toasts ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Components</span>
+          <h2>Toasts</h2>
+          <p class="sg-note">Quick feedback. Variants: success, error, info. Live demo stacks bottom-right.</p>
+          <div class="panel"><div class="panel__body stack" style="max-width:380px">
+            <div class="toast toast--success">
+              <svg class="toast__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg>
+              <div class="toast__body"><div class="toast__title">Pushed to origin</div><div class="toast__msg">main is now up to date with the remote.</div></div>
+              <button class="toast__close" aria-label="Dismiss"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+            </div>
+            <div class="toast toast--error">
+              <svg class="toast__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+              <div class="toast__body"><div class="toast__title">Pull failed</div><div class="toast__msg">Local changes would be overwritten.</div></div>
+              <button class="toast__close" aria-label="Dismiss"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+            </div>
+            <div class="toast toast--info">
+              <svg class="toast__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+              <div class="toast__body"><div class="toast__title">Fetched 3 refs</div><div class="toast__msg">origin/feature-x is 2 commits ahead.</div></div>
+              <button class="toast__close" aria-label="Dismiss"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+            </div>
+            <button class="btn btn--secondary btn--sm" onclick="sgToast()">Show a live toast →</button>
+          </div></div>
+        </section>
+
+        <!-- ===== MOCKED REPO VIEW ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Screen mockup</span>
+          <h2>Repository view</h2>
+          <p class="sg-note">Top bar + action toolbar (remote selector, Push / Pull / Fetch) + output console. This is the real markup the frontend agent should build.</p>
+          <div class="sg-demo-frame">
+            <header class="topbar">
+              <div class="topbar__brand"><span class="topbar__mark">g</span><span>git-automation</span></div>
+              <div class="topbar__context">
+                <div class="repo-meta">
+                  <span class="repo-meta__item"><span class="mono truncate">webgate</span></span>
+                  <span class="repo-meta__item"><span class="mono">main</span></span>
+                  <span class="badge badge--warning">3 behind</span>
+                </div>
+              </div>
+              <div class="topbar__actions"><button class="btn btn--secondary btn--sm">Open repo</button></div>
+            </header>
+            <div style="padding:var(--space-5)">
+              <div class="panel"><div class="panel__body stack">
+                <div class="toolbar">
+                  <div class="field toolbar__remote">
+                    <label class="field__label" for="demo-remote">Remote</label>
+                    <select class="select" id="demo-remote">
+                      <option>origin</option><option>upstream</option><option>fork</option>
+                    </select>
+                  </div>
+                  <div class="toolbar__spacer"></div>
+                  <button class="btn btn--primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                    Push
+                  </button>
+                  <button class="btn btn--secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                    Pull
+                  </button>
+                  <button class="btn btn--secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4"/></svg>
+                    Fetch
+                  </button>
+                </div>
+                <hr class="divider" />
+                <div class="console is-success">
+                  <div class="console__head">
+                    <span class="status-dot status-dot--ok"></span>
+                    <span>git fetch origin</span>
+                    <span class="badge badge--success">Success</span>
+                  </div>
+                  <pre class="console__body"><span class="out-dim">$ git fetch origin</span>
+From github.com:you/webgate
+<span class="out-ok">   e4f5g6h..i7j8k9l  main       -> origin/main</span>
+ * [new branch]      feature-x  -> origin/feature-x</pre>
+                </div>
+              </div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== MOCKED ONBOARDING MODAL (static, always visible) ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Screen mockup</span>
+          <h2>First-run onboarding modal</h2>
+          <p class="sg-note">Shown when <span class="mono">needs_onboarding</span> is true. Rendered inline below (always open) so you can read the markup; the live demo button opens the real overlay.</p>
+          <button class="btn btn--primary" onclick="document.getElementById('sg-onboarding').classList.add('is-open')">Open onboarding modal →</button>
+
+          <div class="sg-demo-frame" style="margin-top:var(--space-4); padding:var(--space-6); display:flex; justify-content:center; background:var(--surface-overlay)">
+            <div class="modal" style="opacity:1; transform:none">
+              <div class="modal__header">
+                <h2 class="modal__title">Welcome to git-automation</h2>
+                <p class="modal__subtitle">Set your git identity and connect GitHub. We'll only ask once.</p>
+              </div>
+              <div class="modal__body stack">
+                <div class="field">
+                  <label class="field__label" for="ob-name">Git name</label>
+                  <input class="input" id="ob-name" type="text" placeholder="Ada Lovelace" />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="ob-email">Git email</label>
+                  <input class="input" id="ob-email" type="email" placeholder="you@example.com" />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="ob-token">GitHub token</label>
+                  <input class="input" id="ob-token" type="password" placeholder="ghp_••••••••••••••••" />
+                  <span class="field__hint">Authenticates the <span class="mono">gh</span> CLI. <a class="link" href="#">How to get a token →</a></span>
+                </div>
+              </div>
+              <div class="modal__footer">
+                <button class="btn btn--ghost">Skip for now</button>
+                <button class="btn btn--primary">Continue</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Class vocabulary ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Reference</span>
+          <h2>Class vocabulary</h2>
+          <p class="sg-note">The full list also lives as a comment block at the top of <span class="mono">app.css</span>.</p>
+          <div class="panel"><div class="panel__body sg-vocab">
+            <div><code>.app</code> root column</div>
+            <div><code>.topbar</code> __brand __mark __context __actions</div>
+            <div><code>.repo-meta</code> __item</div>
+            <div><code>.main</code> · <code>.container</code></div>
+            <div><code>.stack</code> --tight --loose</div>
+            <div><code>.cluster</code> · <code>.divider</code> · <code>.eyebrow</code></div>
+            <div><code>.panel</code> __header __title __body</div>
+            <div><code>.btn</code> --primary --secondary --ghost --danger</div>
+            <div><code>.btn</code> --icon --sm --lg --block</div>
+            <div><code>.btn.is-loading</code> · <code>[disabled]</code></div>
+            <div><code>.field</code> __label __hint __error .has-error</div>
+            <div><code>.input</code> · <code>.select</code> · <code>.input-affix</code> · <code>.link</code></div>
+            <div><code>.toolbar</code> __remote __spacer</div>
+            <div><code>.modal-overlay.is-open</code></div>
+            <div><code>.modal</code> __header __title __subtitle __body __footer</div>
+            <div><code>.dropdown.is-open</code> __menu __item __sep</div>
+            <div><code>.console</code> __head __body .is-success .is-error</div>
+            <div><code>.toast</code> --success --error --info</div>
+            <div><code>.toast</code> __icon __body __title __msg __close</div>
+            <div><code>.toast-stack</code> (fixed container)</div>
+            <div><code>.badge</code> --success --warning --danger --accent</div>
+            <div><code>.status-dot</code> --ok --warn --err · <code>.spinner</code></div>
+            <div><code>.text-muted</code> <code>.text-secondary</code> <code>.mono</code> <code>.truncate</code> <code>.sr-only</code></div>
+          </div></div>
+        </section>
+
+        <div style="height:var(--space-7)"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Live onboarding overlay (hidden until demo button toggles .is-open) -->
+  <div class="modal-overlay" id="sg-onboarding">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Welcome to git-automation</h2>
+        <p class="modal__subtitle">Set your git identity and connect GitHub. We'll only ask once.</p>
+      </div>
+      <div class="modal__body stack">
+        <div class="field">
+          <label class="field__label" for="lv-name">Git name</label>
+          <input class="input" id="lv-name" type="text" placeholder="Ada Lovelace" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="lv-email">Git email</label>
+          <input class="input" id="lv-email" type="email" placeholder="you@example.com" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="lv-token">GitHub token</label>
+          <input class="input" id="lv-token" type="password" placeholder="ghp_••••••••••••••••" />
+          <span class="field__hint">Authenticates the <span class="mono">gh</span> CLI. <a class="link" href="#">How to get a token →</a></span>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--ghost" onclick="document.getElementById('sg-onboarding').classList.remove('is-open')">Skip for now</button>
+        <button class="btn btn--primary" onclick="document.getElementById('sg-onboarding').classList.remove('is-open')">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live toast container -->
+  <div class="toast-stack" id="sg-toast-stack" aria-live="polite"></div>
+
+  <!-- Styleguide-only demo glue (NOT shipped as app logic) -->
+  <script>
+    function sgToast() {
+      const stack = document.getElementById('sg-toast-stack');
+      const t = document.createElement('div');
+      t.className = 'toast toast--success';
+      t.innerHTML =
+        '<svg class="toast__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg>' +
+        '<div class="toast__body"><div class="toast__title">Pushed to origin</div><div class="toast__msg">main is now up to date.</div></div>' +
+        '<button class="toast__close" aria-label="Dismiss"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button>';
+      t.querySelector('.toast__close').onclick = () => t.remove();
+      stack.appendChild(t);
+      setTimeout(() => t.remove(), 4000);
+    }
+  </script>
+</body>
+</html>

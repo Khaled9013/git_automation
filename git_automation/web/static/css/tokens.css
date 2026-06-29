@@ -1,0 +1,150 @@
+/* ==========================================================================
+   git-automation — Design Tokens
+   --------------------------------------------------------------------------
+   The single source of truth for the dark theme. Every color, space, radius,
+   shadow and type step lives here as a CSS custom property. app.css references
+   these and never hardcodes a raw value — change the palette here and the whole
+   app restyles.
+
+   Direction: a premium developer-tool surface (Linear / GitKraken / Raycast
+   register). Cool blue-graphite backgrounds, an "iris" indigo accent, and a
+   restrained set of semantic signal colors. No external fonts — system stacks
+   only, so it renders identically offline.
+
+   Naming
+   ------
+   --bg-*        : layered app backgrounds (deepest -> raised)
+   --surface-*   : panels / cards / elevated containers
+   --border-*    : separators and control outlines
+   --text-*      : foreground text by emphasis
+   --accent-*    : primary brand / interactive accent (iris indigo)
+   --success/-*  : positive signal (e.g. push succeeded)
+   --warning/-*  : caution signal
+   --danger/-*   : error / destructive signal
+   --space-*     : spacing scale (4px base)
+   --radius-*    : corner radii
+   --shadow-*    : elevation shadows
+   --font-*      : font stacks
+   --text-*      : type scale (sizes / line-heights / weights)
+   --ease-* / --dur-* : motion primitives
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- Background layers (deepest shell -> raised) --------------------- */
+  --bg-base:        #0B0E14;  /* app shell / outermost canvas             */
+  --bg-canvas:      #0E121A;  /* working area behind panels               */
+  --bg-inset:       #0C0F16;  /* sunken wells: inputs, output console     */
+
+  /* ---- Surfaces (containers that sit above the canvas) ----------------- */
+  --surface:        #12161F;  /* default panel / card                     */
+  --surface-raised: #161B26;  /* hovered / nested surface                 */
+  --surface-elevated:#1A1F2B; /* modals, dropdowns, popovers              */
+  --surface-overlay: rgba(6, 8, 13, 0.66); /* modal scrim                 */
+
+  /* ---- Borders & dividers --------------------------------------------- */
+  --border:         #232A38;  /* default hairline separator               */
+  --border-strong:  #303A4D;  /* control outlines, emphasized edges       */
+  --border-subtle:  #1B212C;  /* faint internal dividers                  */
+
+  /* ---- Text ----------------------------------------------------------- */
+  --text-primary:   #E7EBF3;  /* headings, primary copy (AAA on surfaces) */
+  --text-secondary: #A6B0C3;  /* supporting copy, labels (AAA)            */
+  --text-muted:     #6C7689;  /* captions, placeholders, disabled (AA-lg) */
+  --text-on-accent: #FFFFFF;  /* text sitting on a filled accent fill     */
+  --text-inverse:   #0B0E14;  /* text on light/bright fills               */
+
+  /* ---- Accent: iris indigo -------------------------------------------- */
+  /* Two tones on purpose: --accent reads bright on dark (links, focus,
+     icons -> AA 5.8:1); --accent-solid is deeper so white text on a filled
+     button passes AA (4.67:1).                                            */
+  --accent:          #6E8AFF;
+  --accent-hover:    #8AA0FF;
+  --accent-solid:    #5468E6;  /* filled primary button background         */
+  --accent-solid-hover:#6175F0;
+  --accent-pressed:  #4458D4;
+  --accent-subtle:   rgba(110, 138, 255, 0.12); /* tint fills / hovers    */
+  --accent-ring:     rgba(110, 138, 255, 0.45); /* focus ring             */
+
+  /* ---- Semantic signals (fg + subtle bg tint) ------------------------- */
+  --success:         #3FBF8F;
+  --success-subtle:  rgba(63, 191, 143, 0.12);
+  --success-border:  rgba(63, 191, 143, 0.32);
+
+  --warning:         #E2A53C;
+  --warning-subtle:  rgba(226, 165, 60, 0.12);
+  --warning-border:  rgba(226, 165, 60, 0.32);
+
+  --danger:          #F26571;
+  --danger-subtle:   rgba(242, 101, 113, 0.12);
+  --danger-border:   rgba(242, 101, 113, 0.34);
+
+  /* ---- Spacing scale (4px base) --------------------------------------- */
+  --space-0:  0;
+  --space-1:  0.25rem;  /*  4px */
+  --space-2:  0.5rem;   /*  8px */
+  --space-3:  0.75rem;  /* 12px */
+  --space-4:  1rem;     /* 16px */
+  --space-5:  1.5rem;   /* 24px */
+  --space-6:  2rem;     /* 32px */
+  --space-7:  3rem;     /* 48px */
+  --space-8:  4rem;     /* 64px */
+
+  /* ---- Radii ---------------------------------------------------------- */
+  --radius-xs:  4px;
+  --radius-sm:  6px;
+  --radius-md:  9px;
+  --radius-lg:  14px;
+  --radius-xl:  20px;
+  --radius-pill: 999px;
+
+  /* ---- Elevation shadows (tuned for a dark UI) ------------------------ */
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md:  0 6px 18px rgba(0, 0, 0, 0.42);
+  --shadow-lg:  0 18px 48px rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.50);
+  /* Inset highlight that gives controls a faint top edge of light */
+  --shadow-edge: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --focus-ring: 0 0 0 3px var(--accent-ring);
+
+  /* ---- Typography: system + mono stacks (no network fetch) ------------ */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto,
+    "Helvetica Neue", Arial, system-ui, sans-serif;
+  --font-mono:
+    "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Type scale */
+  --text-xs:   0.75rem;   /* 12px */
+  --text-sm:   0.8125rem; /* 13px */
+  --text-base: 0.875rem;  /* 14px — UI default */
+  --text-md:   0.9375rem; /* 15px */
+  --text-lg:   1.0625rem; /* 17px */
+  --text-xl:   1.375rem;  /* 22px */
+  --text-2xl:  1.75rem;   /* 28px */
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+  --weight-semibold:600;
+  --weight-bold:    700;
+
+  --tracking-tight: -0.01em;
+  --tracking-wide:  0.04em;   /* eyebrows / overline labels */
+
+  /* ---- Motion --------------------------------------------------------- */
+  --dur-fast:  120ms;
+  --dur-base:  180ms;
+  --dur-slow:  260ms;
+  --ease-out:   cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---- Layout constants ----------------------------------------------- */
+  --topbar-height: 56px;
+  --content-max:   980px;
+}
