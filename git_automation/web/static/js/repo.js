@@ -245,5 +245,19 @@ export function initRepo({ onRepoLoaded } = {}) {
     currentPath() {
       return currentPath;
     },
+    /** The last-loaded repository status, or null. */
+    status() {
+      return status;
+    },
+    /** Run push / pull / fetch with the selected remote (toolbar entry points). */
+    push() {
+      return runOp('push');
+    },
+    pull() {
+      return runOp('pull');
+    },
+    fetch() {
+      return runOp('fetch');
+    },
   };
 }

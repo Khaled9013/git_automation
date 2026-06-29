@@ -9,140 +9,139 @@
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
-  <div class="app">
 
-    <!-- ============================ Top bar ============================ -->
-    <header class="topbar">
-      <div class="topbar__brand">
-        <span class="topbar__mark">g</span>
-        <span>git-automation</span>
-      </div>
+  <!-- ===================== 3-pane workspace ===================== -->
+  <div class="layout-3pane" id="workspace">
 
-      <div class="topbar__context">
-        <!-- Repo/branch meta — hidden until a repo is loaded -->
-        <div class="repo-meta" id="topbar-meta" hidden>
-          <span class="repo-meta__item">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
-            <span class="mono truncate" id="meta-repo"></span>
-          </span>
-          <span class="repo-meta__item">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
-            <span class="mono" id="meta-branch"></span>
-          </span>
-          <span id="meta-status"></span>
-        </div>
-      </div>
+    <!-- ---------- Top action bar ---------- -->
+    <div class="toolbar2" id="toolbar">
+      <!-- Repo selector → opens the folder browser -->
+      <button class="toolbar2__select" id="tb-repo" type="button" aria-label="Open repository">
+        <span class="mono truncate" id="tb-repo-label">Open repo&hellip;</span>
+        <svg class="toolbar2__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
 
-      <div class="topbar__actions">
-        <button class="btn btn--icon btn--sm" id="btn-refresh" aria-label="Refresh repository status" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4"/></svg>
+      <!-- Branch selector → branches.js dropdown -->
+      <div class="dropdown" id="branch-dropdown">
+        <button class="toolbar2__select" id="branch-toggle" type="button" aria-haspopup="true" aria-expanded="false" disabled>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+          <span class="mono truncate" id="branch-current">&mdash;</span>
+          <svg class="toolbar2__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
         </button>
-        <button class="btn btn--secondary btn--sm" id="btn-browse">Open repo</button>
-        <button class="btn btn--secondary btn--sm" id="btn-identity">Identity</button>
+        <div class="dropdown__menu" id="branch-menu-slot" role="menu" aria-label="Branches"></div>
       </div>
-    </header>
 
-    <!-- ============================ Main ============================ -->
-    <main class="main">
-      <div class="container stack stack--loose">
+      <span class="toolbar2__sep"></span>
 
-        <!-- ===== Open repository ===== -->
-        <section class="panel">
-          <div class="panel__header">
-            <h1 class="panel__title">Repository</h1>
-          </div>
-          <div class="panel__body">
-            <form class="toolbar" id="open-form" novalidate>
-              <div class="field toolbar__spacer">
-                <label class="field__label" for="repo-path">Local repository path</label>
-                <input
-                  class="input"
-                  id="repo-path"
-                  name="path"
-                  type="text"
-                  inputmode="text"
-                  autocomplete="off"
-                  spellcheck="false"
-                  placeholder="/absolute/path/to/your/repo"
-                  aria-describedby="repo-path-hint"
-                />
-                <span class="field__hint" id="repo-path-hint">An absolute path to a local git repository on this machine.</span>
-              </div>
-              <button class="btn btn--secondary" type="button" id="btn-browse-inline" style="align-self:flex-start;margin-top:var(--space-5)">Browse&hellip;</button>
-              <button class="btn btn--primary" type="submit" id="btn-open" style="align-self:flex-start;margin-top:var(--space-5)">Open</button>
-            </form>
-          </div>
-        </section>
-
-        <!-- ===== Repo status + actions ===== -->
-        <section class="panel" id="repo-panel" hidden>
-          <div class="panel__header">
-            <h2 class="panel__title">Status &amp; remote operations</h2>
-            <div class="cluster" id="status-badges" aria-live="polite"></div>
-          </div>
-          <div class="panel__body stack">
-
-            <div class="toolbar">
-              <div class="field toolbar__remote">
-                <label class="field__label" for="remote-select">Remote</label>
-                <select class="select" id="remote-select" aria-label="Target remote"></select>
-              </div>
-              <div class="toolbar__spacer"></div>
-              <button class="btn btn--primary" id="btn-push" type="button">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                Push
-              </button>
-              <button class="btn btn--secondary" id="btn-pull" type="button">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-                Pull
-              </button>
-              <button class="btn btn--secondary" id="btn-fetch" type="button">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4"/></svg>
-                Fetch
-              </button>
-            </div>
-
-            <hr class="divider" />
-
-            <!-- Command output console — populated by JS -->
-            <div id="console-slot" aria-live="polite"></div>
-          </div>
-        </section>
-
-        <!-- ===== Working tree: branches + changes + diff ===== -->
-        <section class="panel" id="git-client" hidden>
-          <div class="panel__header">
-            <h2 class="panel__title">Working tree</h2>
-            <div class="dropdown" id="branch-dropdown">
-              <button class="btn btn--secondary btn--sm" id="branch-toggle" type="button" aria-haspopup="true" aria-expanded="false" disabled>
-                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
-                <span class="mono" id="branch-current">&mdash;</span>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
-              </button>
-              <div class="dropdown__menu dropdown__menu--right" id="branch-menu-slot" role="menu" aria-label="Branches"></div>
-            </div>
-          </div>
-          <div class="panel__body stack">
-            <!-- Staged / unstaged / untracked + commit box — rendered by changes.js -->
-            <div id="changes-slot"></div>
-            <!-- Diff for the selected file — rendered by diff.js -->
-            <div id="diff-slot" aria-live="polite"></div>
-          </div>
-        </section>
-
-        <!-- ===== Commit graph ===== -->
-        <section class="panel" id="graph-panel" hidden>
-          <div class="panel__header">
-            <h2 class="panel__title">History</h2>
-          </div>
-          <div class="panel__body">
-            <!-- Filled by graph.js (owned by the graph agent) -->
-            <div id="commit-graph"></div>
-          </div>
-        </section>
-
+      <div class="toolbar2__group">
+        <button class="toolbar2__btn" id="tb-undo" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
+          <span class="toolbar2__label">Undo</span>
+        </button>
+        <button class="toolbar2__btn" id="tb-redo" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h1"/></svg>
+          <span class="toolbar2__label">Redo</span>
+        </button>
       </div>
-    </main>
+
+      <span class="toolbar2__sep"></span>
+
+      <div class="toolbar2__group">
+        <button class="toolbar2__btn" id="tb-pull" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          <span class="toolbar2__label">Pull</span>
+        </button>
+        <button class="toolbar2__btn" id="tb-push" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          <span class="toolbar2__label">Push</span>
+        </button>
+        <button class="toolbar2__btn" id="tb-branch-create" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span class="toolbar2__label">Branch</span>
+        </button>
+      </div>
+
+      <span class="toolbar2__sep"></span>
+
+      <div class="toolbar2__group">
+        <button class="toolbar2__btn" id="tb-stash" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
+          <span class="toolbar2__label">Stash</span>
+        </button>
+        <button class="toolbar2__btn" id="tb-pop" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V8M6 13l6-6 6 6"/><path d="M5 5h14"/></svg>
+          <span class="toolbar2__label">Pop</span>
+        </button>
+      </div>
+
+      <span class="toolbar2__spacer"></span>
+
+      <button class="toolbar2__btn" id="tb-identity" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+        <span class="toolbar2__label">Identity</span>
+      </button>
+      <button class="toolbar2__btn" id="tb-terminal" type="button" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+        <span class="toolbar2__label">Terminal</span>
+      </button>
+    </div>
+
+    <!-- ---------- Left: ref sidebar ---------- -->
+    <aside class="sidebar" id="sidebar" aria-label="References"></aside>
+
+    <!-- ---------- Center: commit graph ---------- -->
+    <div class="layout-3pane__center">
+      <div class="graph" id="commit-graph" role="tree" aria-label="Commit graph">
+        <div class="text-muted">Open a repository to view its history.</div>
+      </div>
+    </div>
+
+    <!-- ---------- Right: commit detail / working-tree changes ---------- -->
+    <div class="layout-3pane__detail" id="detail-pane">
+      <div id="commit-detail-root"></div>
+      <div id="changes-root" hidden></div>
+      <div id="detail-diff" aria-live="polite"></div>
+      <!-- Merge editor mounts here (owned by mergeeditor.js, lazily imported) -->
+      <div id="merge-editor-root"></div>
+    </div>
+
+    <!-- ---------- Bottom: collapsible terminal ---------- -->
+    <div class="terminal-pane is-collapsed" id="terminal-pane">
+      <div class="terminal-pane__head" id="terminal-head" role="button" tabindex="0" aria-expanded="false">
+        <svg class="terminal-pane__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="terminal-pane__title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></svg>
+          Terminal
+        </span>
+      </div>
+      <!-- Terminal renderer mounts here (owned by terminal.js, lazily imported) -->
+      <div class="terminal-pane__body" id="terminal-root"></div>
+    </div>
+
+  </div>
+
+  <!-- ===================== Legacy controls for repo.js ===================== -->
+  <!-- repo.js drives load/status/remotes and push/pull/fetch through these
+       elements; they are hidden because the toolbar/sidebar present the UI. -->
+  <div hidden aria-hidden="true">
+    <form id="open-form">
+      <input id="repo-path" name="path" type="text" />
+      <button id="btn-open" type="submit">Open</button>
+    </form>
+    <button id="btn-refresh" type="button"></button>
+    <div id="repo-panel">
+      <div id="status-badges"></div>
+      <select id="remote-select"></select>
+      <button id="btn-push" type="button"></button>
+      <button id="btn-pull" type="button"></button>
+      <button id="btn-fetch" type="button"></button>
+      <div id="console-slot"></div>
+    </div>
+    <div id="topbar-meta">
+      <span id="meta-repo"></span>
+      <span id="meta-branch"></span>
+      <span id="meta-status"></span>
+    </div>
   </div>
 
   <!-- ===================== Folder browser modal ===================== -->

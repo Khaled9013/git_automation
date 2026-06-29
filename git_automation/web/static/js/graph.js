@@ -73,34 +73,47 @@ function shortAuthor(name) {
   return sp > 0 ? n.slice(0, sp) : n;
 }
 
+const TAG_ICON =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7V3.5A1.5 1.5 0 0 1 3.5 2H7l6.5 6.5a1.5 1.5 0 0 1 0 2.1L10.6 13.5a1.5 1.5 0 0 1-2.1 0L2 7Z"/></svg>';
+
 /**
- * Build the ref-chip markup for a commit's `refs` array.
- * Recognises `HEAD -> branch`, bare `HEAD`, `tag: name`, remote (`a/b`) and
- * local branch refs, mapping each to the matching `.graph__ref--*` modifier.
+ * Build the BRANCH/TAG label-column markup for a commit's `refs` array, using
+ * the `.graph__labels` container + `.graph__label--{head,branch,remote,tag}`
+ * chips from the styleguide. The container is always emitted (even when empty)
+ * so the column stays aligned across rows.
  */
-function refsHtml(refs) {
-  if (!refs || !refs.length) return '';
+function labelsHtml(refs) {
   const chips = [];
-  for (const raw of refs) {
+  for (const raw of refs || []) {
     const ref = String(raw).trim();
     if (!ref) continue;
-    let cls = 'graph__ref--branch';
-    let label = ref;
+    let cls = 'graph__label--branch';
+    let inner = esc(ref);
     if (ref === 'HEAD') {
-      cls = 'graph__ref--head';
+      cls = 'graph__label--head';
     } else if (ref.startsWith('HEAD -> ')) {
-      cls = 'graph__ref--head';
-      label = `HEAD → ${ref.slice('HEAD -> '.length)}`;
+      cls = 'graph__label--head';
+      inner = `HEAD → ${esc(ref.slice('HEAD -> '.length))}`;
     } else if (ref.startsWith('tag: ')) {
-      cls = 'graph__ref--tag';
-      label = ref.slice('tag: '.length);
+      cls = 'graph__label--tag';
+      inner = `${TAG_ICON}${esc(ref.slice('tag: '.length))}`;
     } else if (ref.includes('/')) {
-      cls = 'graph__ref--remote';
+      cls = 'graph__label--remote';
     }
-    chips.push(`<span class="graph__ref ${cls}">${esc(label)}</span>`);
+    chips.push(`<span class="graph__label ${cls}">${inner}</span>`);
   }
-  if (!chips.length) return '';
-  return `<span class="graph__refs">${chips.join('')}</span>`;
+  return `<span class="graph__labels">${chips.join('')}</span>`;
+}
+
+/** Local branch names a commit carries (for double-click → checkout branch). */
+function localBranches(refs) {
+  const out = [];
+  for (const raw of refs || []) {
+    const ref = String(raw).trim();
+    if (!ref || ref === 'HEAD' || ref.startsWith('tag: ') || ref.includes('/')) continue;
+    out.push(ref.startsWith('HEAD -> ') ? ref.slice('HEAD -> '.length) : ref);
+  }
+  return out;
 }
 
 /**
@@ -245,11 +258,30 @@ function rowHtml(commit, lay, index) {
     `<div class="graph__row" role="treeitem" data-i="${index}" aria-selected="false">` +
     `<svg class="graph__lanes" width="${w}" height="${ROW_H}" viewBox="0 0 ${w} ${ROW_H}" aria-hidden="true">` +
     `${edges}${node}</svg>` +
+    labelsHtml(commit.refs) +
     `<div class="graph__content">` +
     `<span class="graph__sha">${esc(commit.short || (commit.sha || '').slice(0, 7))}</span>` +
-    refsHtml(commit.refs) +
     `<span class="graph__subject">${esc(commit.subject)}</span>` +
     `<span class="graph__meta">${esc(meta)}</span>` +
+    `</div></div>`
+  );
+}
+
+/** The top "uncommitted changes" (WIP) row, shown when the working tree is dirty. */
+function wipRowHtml() {
+  const w = LANE_W;
+  const x = laneX(0);
+  const svg =
+    `<svg class="graph__lanes" width="${w}" height="${ROW_H}" viewBox="0 0 ${w} ${ROW_H}" aria-hidden="true">` +
+    `<path class="graph__edge graph__lane-1" d="M ${x} ${MID_Y} L ${x} ${ROW_H}"/>` +
+    `<circle class="graph__node graph__lane-1 is-head" cx="${x}" cy="${MID_Y}" r="${NODE_R}"/></svg>`;
+  return (
+    `<div class="graph__row" role="treeitem" data-wip="1" aria-selected="false">` +
+    `${svg}` +
+    `<span class="graph__labels"><span class="graph__label graph__label--head">WIP</span></span>` +
+    `<div class="graph__content">` +
+    `<span class="graph__subject">Uncommitted changes</span>` +
+    `<span class="graph__meta">working tree</span>` +
     `</div></div>`
   );
 }
@@ -266,7 +298,7 @@ function rowHtml(commit, lay, index) {
  */
 export function createGraph(containerEl, options = {}) {
   if (!containerEl) throw new Error('createGraph: containerEl is required');
-  const { onSelect, limit } = options;
+  const { onSelect, onActivate, onContext, onWip, limit } = options;
 
   let commits = [];
   let selectedRow = null;
@@ -277,31 +309,68 @@ export function createGraph(containerEl, options = {}) {
     containerEl.replaceChildren();
   }
 
-  function select(row) {
-    if (!row || row === selectedRow) return;
+  function markSelected(row) {
+    if (row === selectedRow) return;
     if (selectedRow) {
       selectedRow.classList.remove('is-selected');
       selectedRow.setAttribute('aria-selected', 'false');
     }
     selectedRow = row;
-    row.classList.add('is-selected');
-    row.setAttribute('aria-selected', 'true');
-    const i = Number(row.dataset.i);
-    if (typeof onSelect === 'function' && commits[i]) onSelect(commits[i], i);
+    if (row) {
+      row.classList.add('is-selected');
+      row.setAttribute('aria-selected', 'true');
+    }
   }
 
-  // One delegated listener for the whole graph — cheap for ~500 rows.
+  function commitFor(row) {
+    if (!row || row.dataset.i == null) return null;
+    return commits[Number(row.dataset.i)] || null;
+  }
+
+  function select(row) {
+    if (!row) return;
+    markSelected(row);
+    if (row.dataset.wip === '1') {
+      if (typeof onWip === 'function') onWip();
+      return;
+    }
+    const c = commitFor(row);
+    if (c && typeof onSelect === 'function') onSelect(c, Number(row.dataset.i));
+  }
+
+  // Delegated listeners for the whole graph — cheap for ~500 rows.
   containerEl.addEventListener('click', (ev) => {
     const row = ev.target.closest('.graph__row');
     if (row && containerEl.contains(row)) select(row);
   });
 
-  async function render(path) {
+  containerEl.addEventListener('dblclick', (ev) => {
+    const row = ev.target.closest('.graph__row');
+    if (!row || !containerEl.contains(row) || row.dataset.wip === '1') return;
+    const c = commitFor(row);
+    if (c && typeof onActivate === 'function') {
+      onActivate(c, { branches: localBranches(c.refs) });
+    }
+  });
+
+  containerEl.addEventListener('contextmenu', (ev) => {
+    const row = ev.target.closest('.graph__row');
+    if (!row || !containerEl.contains(row) || row.dataset.wip === '1') return;
+    const c = commitFor(row);
+    if (c && typeof onContext === 'function') {
+      ev.preventDefault();
+      markSelected(row);
+      if (typeof onSelect === 'function') onSelect(c, Number(row.dataset.i));
+      onContext(c, ev.clientX, ev.clientY, { branches: localBranches(c.refs) });
+    }
+  });
+
+  async function render(path, { dirty = false } = {}) {
     const { commits: data } = await api.getGraph(path, limit);
     commits = Array.isArray(data) ? data : [];
     selectedRow = null;
 
-    if (!commits.length) {
+    if (!commits.length && !dirty) {
       containerEl.innerHTML =
         '<div class="text-muted" style="padding:var(--space-4)">No commits to display.</div>';
       return;
@@ -310,7 +379,7 @@ export function createGraph(containerEl, options = {}) {
     // Compute all geometry up front, then write the DOM in a single pass to
     // avoid per-row layout thrash.
     const rows = layout(commits);
-    let html = '';
+    let html = dirty ? wipRowHtml() : '';
     for (let i = 0; i < commits.length; i++) html += rowHtml(commits[i], rows[i], i);
     containerEl.innerHTML = html;
 

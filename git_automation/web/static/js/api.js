@@ -193,3 +193,117 @@ export function branchMerge(path, name) {
 export function getGraph(path, limit = 200) {
   return request(`/api/repo/graph?path=${encodeURIComponent(path)}&limit=${encodeURIComponent(limit)}`);
 }
+
+// ---- Slice 3: refs sidebar --------------------------------------------------
+
+/** GET /api/repo/refs?path= → { local, remote, tags, worktrees, stashes } */
+export function getRefs(path) {
+  return request(`/api/repo/refs?path=${encodeURIComponent(path)}`);
+}
+
+// ---- Slice 3: commit detail -------------------------------------------------
+
+/** GET /api/repo/commit?path=&sha= → { sha, short, parents, author, …, files } */
+export function getCommit(path, sha) {
+  return request(`/api/repo/commit?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(sha)}`);
+}
+
+// ---- Slice 3: navigation / history rewrite ----------------------------------
+
+/** POST /api/git/checkout — branch name OR commit sha (detached). */
+export function checkout(path, ref) {
+  return postJson('/api/git/checkout', { path, ref });
+}
+
+/** POST /api/git/reset — mode ∈ {soft,mixed,hard} (destructive — confirm in UI). */
+export function reset(path, sha, mode) {
+  return postJson('/api/git/reset', { path, sha, mode });
+}
+
+/** POST /api/git/cherry-pick */
+export function cherryPick(path, sha) {
+  return postJson('/api/git/cherry-pick', { path, sha });
+}
+
+// ---- Slice 3: merge lifecycle + conflicts -----------------------------------
+
+/** POST /api/git/merge → { ok, output, conflicted, conflicts } */
+export function mergeBranch(path, name) {
+  return postJson('/api/git/merge', { path, name });
+}
+
+/** GET /api/repo/merge-status?path= → { merging, conflicts, message } */
+export function getMergeStatus(path) {
+  return request(`/api/repo/merge-status?path=${encodeURIComponent(path)}`);
+}
+
+/** GET /api/repo/conflict?path=&file= → { file, base, ours, theirs, merged, binary } */
+export function getConflict(path, file) {
+  return request(`/api/repo/conflict?path=${encodeURIComponent(path)}&file=${encodeURIComponent(file)}`);
+}
+
+/** POST /api/git/resolve — write resolved content + stage. */
+export function resolveConflict(path, file, content) {
+  return postJson('/api/git/resolve', { path, file, content });
+}
+
+/** POST /api/git/merge/continue — commit the in-progress merge. */
+export function mergeContinue(path, message = null) {
+  return postJson('/api/git/merge/continue', { path, message });
+}
+
+/** POST /api/git/merge/abort */
+export function mergeAbort(path) {
+  return postJson('/api/git/merge/abort', { path });
+}
+
+// ---- Slice 3: stash ---------------------------------------------------------
+
+/** POST /api/git/stash */
+export function stash(path, message = null) {
+  return postJson('/api/git/stash', { path, message });
+}
+
+/** POST /api/git/stash/pop */
+export function stashPop(path, index = null) {
+  return postJson('/api/git/stash/pop', { path, index });
+}
+
+/** POST /api/git/stash/apply */
+export function stashApply(path, index) {
+  return postJson('/api/git/stash/apply', { path, index });
+}
+
+/** POST /api/git/stash/drop (destructive — confirm in UI first) */
+export function stashDrop(path, index) {
+  return postJson('/api/git/stash/drop', { path, index });
+}
+
+// ---- Slice 3: undo / redo (reflog-based, best-effort) -----------------------
+
+/** GET /api/repo/reflog?path=&limit= → [ {selector, subject} ] */
+export function getReflog(path, limit = 50) {
+  return request(`/api/repo/reflog?path=${encodeURIComponent(path)}&limit=${encodeURIComponent(limit)}`);
+}
+
+/** POST /api/git/undo → { ok, output, undone } */
+export function undo(path) {
+  return postJson('/api/git/undo', { path });
+}
+
+/** POST /api/git/redo → { ok, output, undone } */
+export function redo(path) {
+  return postJson('/api/git/redo', { path });
+}
+
+// ---- Slice 3: pull requests (gh) --------------------------------------------
+
+/** POST /api/gh/pr/create → { number, url } */
+export function prCreate(path, title, body = null, base = null, head = null) {
+  return postJson('/api/gh/pr/create', { path, title, body, base, head });
+}
+
+/** GET /api/gh/pr/list?path= → [ {number, title, url, state, head, base} ] */
+export function prList(path) {
+  return request(`/api/gh/pr/list?path=${encodeURIComponent(path)}`);
+}
