@@ -27,6 +27,37 @@ from git_automation.core.process import validate_repo_path
 _SEP = "\x1f"
 
 
+def _reject_option(value: str, label: str) -> str:
+    """Reject a value git could misread as an option (one starting with ``-``).
+
+    Remote names, branch names, and other git refs can never legitimately begin
+    with ``-`` (see ``git check-ref-format``). Rejecting such values closes an
+    option-injection vector: a crafted ``remote`` like ``--upload-pack=<cmd>``
+    (or ``--receive-pack`` on push) would otherwise be parsed as a flag by
+    ``git fetch``/``pull``/``push`` and lead to arbitrary command execution.
+    ``--`` is not a usable separator for every affected command (e.g. ``git
+    checkout -- main`` means a *pathspec*, not a branch), so this guard is the
+    uniform defense.
+
+    Args:
+        value: The caller-supplied remote/branch/ref value.
+        label: Human-readable name of the field, used in the error message.
+
+    Returns:
+        ``value`` unchanged when it is safe.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` when ``value`` starts with ``-``.
+    """
+    if value.startswith("-"):
+        raise GitAutomationError(
+            "invalid_argument",
+            f"Invalid {label}: must not start with '-'.",
+            400,
+        )
+    return value
+
+
 async def run_git(args: list[str], cwd: str | None = None) -> CommandResult:
     """Run ``git`` with ``args`` and return a :class:`CommandResult`.
 
@@ -143,14 +174,17 @@ async def get_status(path: str) -> RepoStatus:
 async def fetch(path: str, remote: str) -> CommandResult:
     """Fetch ``remote`` for the repository at ``path``."""
     cwd = validate_repo_path(path)
+    _reject_option(remote, "remote")
     return await run_git(["fetch", remote], cwd=cwd)
 
 
 async def pull(path: str, remote: str, branch: str | None = None) -> CommandResult:
     """Pull ``remote`` (optionally a specific ``branch``) into ``path``."""
     cwd = validate_repo_path(path)
+    _reject_option(remote, "remote")
     args = ["pull", remote]
     if branch:
+        _reject_option(branch, "branch")
         args.append(branch)
     return await run_git(args, cwd=cwd)
 
@@ -170,11 +204,13 @@ async def push(
         set_upstream: When True, pass ``--set-upstream`` (for a first push).
     """
     cwd = validate_repo_path(path)
+    _reject_option(remote, "remote")
     args = ["push"]
     if set_upstream:
         args.append("--set-upstream")
     args.append(remote)
     if branch:
+        _reject_option(branch, "branch")
         args.append(branch)
     return await run_git(args, cwd=cwd)
 
@@ -352,6 +388,7 @@ async def list_branches(path: str) -> BranchList:
 async def create_branch(path: str, name: str, checkout: bool = False) -> CommandResult:
     """Create branch ``name``; when ``checkout`` is True, switch to it too."""
     cwd = validate_repo_path(path)
+    _reject_option(name, "branch name")
     args = ["checkout", "-b", name] if checkout else ["branch", name]
     return await run_git(args, cwd=cwd)
 
@@ -359,6 +396,7 @@ async def create_branch(path: str, name: str, checkout: bool = False) -> Command
 async def checkout_branch(path: str, name: str) -> CommandResult:
     """Switch the repository at ``path`` to branch ``name``."""
     cwd = validate_repo_path(path)
+    _reject_option(name, "branch name")
     return await run_git(["checkout", name], cwd=cwd)
 
 
@@ -371,13 +409,15 @@ async def delete_branch(path: str, name: str, force: bool = False) -> CommandRes
         force: When True, force-delete unmerged branches (``-D``).
     """
     cwd = validate_repo_path(path)
+    _reject_option(name, "branch name")
     flag = "-D" if force else "-d"
-    return await run_git(["branch", flag, name], cwd=cwd)
+    return await run_git(["branch", flag, "--", name], cwd=cwd)
 
 
 async def merge_branch(path: str, name: str) -> CommandResult:
     """Merge branch ``name`` into the current branch. The UI confirms first."""
     cwd = validate_repo_path(path)
+    _reject_option(name, "branch name")
     return await run_git(["merge", name], cwd=cwd)
 
 
