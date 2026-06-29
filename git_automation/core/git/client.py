@@ -71,6 +71,46 @@ def _reject_option(value: str, label: str) -> str:
     return value
 
 
+def _resolve_worktree_file(cwd: str, file: str) -> Path:
+    """Resolve a caller-supplied repo-relative path, refusing any escape.
+
+    The merge editor reads and writes the *working-tree* copy of a conflicted
+    file (:func:`get_conflict` / :func:`resolve_conflict`). Because ``file``
+    arrives from the client, it must be confined to the validated repository:
+    an absolute path, a ``../`` traversal, or an intermediate symlink pointing
+    outside would otherwise let a caller read or overwrite arbitrary files
+    (e.g. ``/etc/...``) or — by targeting ``.git/config`` / a ``.git`` hook —
+    reach code execution. The path is resolved with symlinks followed and is
+    required to stay strictly within the worktree and outside ``.git``.
+
+    Args:
+        cwd: The validated repository working-tree directory.
+        file: The caller-supplied, repo-relative file path.
+
+    Returns:
+        The resolved absolute :class:`~pathlib.Path` of the target file.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) when the path escapes the
+            worktree, equals the worktree root, or enters the ``.git`` directory.
+    """
+    root = Path(cwd).resolve()
+    candidate = (root / file).resolve()
+    if candidate == root or not candidate.is_relative_to(root):
+        raise GitAutomationError(
+            "invalid_argument",
+            "Invalid file path: must be inside the repository working tree.",
+            400,
+        )
+    if ".git" in candidate.relative_to(root).parts:
+        raise GitAutomationError(
+            "invalid_argument",
+            "Invalid file path: must not be inside the .git directory.",
+            400,
+        )
+    return candidate
+
+
 async def run_git(args: list[str], cwd: str | None = None) -> CommandResult:
     """Run ``git`` with ``args`` and return a :class:`CommandResult`.
 
@@ -776,10 +816,10 @@ async def get_conflict(path: str, file: str) -> Conflict:
         any retrieved content contains a NUL byte.
     """
     cwd = validate_repo_path(path)
+    working = _resolve_worktree_file(cwd, file)
     base = await _show_stage(cwd, 1, file)
     ours = await _show_stage(cwd, 2, file)
     theirs = await _show_stage(cwd, 3, file)
-    working = Path(cwd) / file
     merged = working.read_text(errors="replace") if working.is_file() else None
     binary = any("\x00" in text for text in (base, ours, theirs, merged) if text is not None)
     return Conflict(
@@ -801,7 +841,7 @@ async def resolve_conflict(path: str, file: str, content: str) -> CommandResult:
         content: The resolved file contents to write.
     """
     cwd = validate_repo_path(path)
-    target = Path(cwd) / file
+    target = _resolve_worktree_file(cwd, file)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content)
     return await run_git(["add", "--", file], cwd=cwd)

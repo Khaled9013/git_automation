@@ -26,6 +26,7 @@ Wire protocol:
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
@@ -33,6 +34,35 @@ from git_automation.core.errors import GitAutomationError
 from git_automation.core.terminal import PtySession
 
 router = APIRouter()
+
+# Loopback hosts that a *same-origin* browser tab serving this app would present
+# in its ``Origin`` header. Anything else is a foreign site.
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+# Policy-violation close code (RFC 6455) used to reject foreign-origin sockets.
+_WS_POLICY_VIOLATION = 1008
+
+
+def _origin_allowed(origin: str | None) -> bool:
+    """Return True when an ``Origin`` header is absent or loopback-local.
+
+    The PTY WebSocket hands the peer a real shell, so it must not be reachable
+    from arbitrary websites. Unlike the JSON ``/api`` endpoints — which a
+    cross-origin page cannot reach because the ``application/json`` content type
+    forces a CORS preflight — a browser may open a *cross-site* WebSocket to
+    ``127.0.0.1`` with **no** preflight (Cross-Site WebSocket Hijacking). The
+    only signal available at handshake time is the ``Origin`` header, which
+    browsers always send and which page JavaScript cannot forge. We therefore
+    require it to be loopback-local. A missing ``Origin`` (non-browser clients
+    such as the CLI or tests) is allowed.
+    """
+    if origin is None:
+        return True
+    try:
+        host = urlparse(origin).hostname
+    except ValueError:
+        return False
+    return host in _LOOPBACK_HOSTS
 
 
 async def _pump_output(session: PtySession, websocket: WebSocket) -> None:
@@ -50,6 +80,11 @@ async def _pump_output(session: PtySession, websocket: WebSocket) -> None:
 @router.websocket("/terminal")
 async def terminal_socket(websocket: WebSocket, path: str = Query(...)) -> None:
     """Relay a client WebSocket to a shell running on a PTY in ``path``."""
+    if not _origin_allowed(websocket.headers.get("origin")):
+        # Reject the handshake outright (no accept) so a foreign-origin page
+        # never gets a shell. Defends against Cross-Site WebSocket Hijacking.
+        await websocket.close(code=_WS_POLICY_VIOLATION)
+        return
     await websocket.accept()
 
     try:

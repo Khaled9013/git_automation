@@ -127,3 +127,126 @@ calling each: discard (`changes.js`), merge and delete (`branches.js`) via
 - Added `tests/test_security_injection.py` (11 regression tests: core +
   API layers) asserting option-like values are rejected with a 400
   `invalid_argument` and never reach the subprocess layer.
+
+---
+
+# Security Review — Phase 1 / Slice 3 (PTY, merge/conflict, new git/PR ops)
+
+Scope: the *new* Slice-3 surface only — `core/terminal.py`,
+`web/api/terminal.py` (PTY WebSocket); the merge/conflict + reset/cherry-pick/
+checkout/stash/reflog/undo additions in `core/git/client.py`; the new routers
+`web/api/{merge,stash,pr,gitops}.py`; and PR support in `core/gh/client.py`.
+Slice-1/2 findings (F1–F9 above) are not re-litigated.
+
+Audit date: 2026-06-29. Test baseline: 157 → 168 passing
+(`uv run pytest -q`), `uv run ruff check .` clean.
+
+## Findings
+
+### S1 — `resolve_conflict` arbitrary file **write** via path traversal — HIGH (fixed)
+
+`core/git/client.py::resolve_conflict`. The endpoint computed the write target
+as `Path(cwd) / file` with a client-supplied `file`, then `git add`. Because
+`Path(cwd) / "/etc/x"` collapses to `/etc/x` and `Path(cwd) / "../../x"`
+traverses upward, a caller could write arbitrary content to **any** path the
+server user can write — confirmed empirically with both a relative `../` path
+and an absolute path (the subsequent `git add` fails, but the file is already
+overwritten). Targeting `.git/config` or a `.git` hook escalates this to code
+execution on the next git operation. Reachable via `POST /api/git/resolve`.
+
+**Fix:** Added `_resolve_worktree_file(cwd, file)` which `.resolve()`s the
+target (following symlinks) and requires it to stay strictly inside the
+worktree and outside `.git`, raising `invalid_argument` (400) otherwise.
+Applied to the write in `resolve_conflict`. Legitimate nested conflict paths
+still work. Regression tests in `tests/test_slice3_security.py` cover relative
+traversal, absolute paths, symlink escape, `.git` writes, the API layer, and a
+positive (normal nested file) case.
+
+### S2 — `get_conflict` arbitrary file **read** via path traversal — HIGH (fixed)
+
+`core/git/client.py::get_conflict`. The working-copy read used
+`Path(cwd) / file` and returned the contents in the `merged` field — confirmed
+leaking an out-of-repo file (`../SECRET.txt`) via `GET /api/repo/conflict`. The
+three merge *stages* are fetched with `git show :N:file`, which git already
+confines to the repo object store, so only the working-tree read was exposed.
+
+**Fix:** `get_conflict` now resolves the working path through the same
+`_resolve_worktree_file` guard (400 on escape). Regression tests at the client
+and API layers.
+
+### S3 — PTY WebSocket reachable cross-origin (CSWSH) — HIGH (fixed)
+
+`web/api/terminal.py`. The accepted-risk note for the JSON API ("a cross-origin
+page can't POST JSON without a CORS preflight") does **not** extend to
+WebSockets: a browser may open a cross-site WebSocket to `127.0.0.1` with no
+preflight and no same-origin restriction. Any website the user visits could
+therefore connect to `WS /api/terminal` and obtain an interactive shell with
+the server user's privileges — Cross-Site WebSocket Hijacking → RCE. The
+localhost bind does not help, because the victim's own browser originates the
+connection.
+
+**Fix:** Added an `Origin` check (`_origin_allowed`) that rejects the handshake
+(close code 1008, before `accept()` — no shell spawned) unless the `Origin`
+host is loopback (`localhost`/`127.0.0.1`/`::1`). A missing `Origin` (CLI /
+non-browser / tests) is allowed; browsers always send a forge-proof `Origin`.
+Look-alike hosts (e.g. `127.0.0.1.evil.com`) are rejected. Regression tests in
+`tests/test_slice3_security.py` cover the allow/deny matrix and a live
+foreign-origin handshake rejection.
+
+## Verified OK (no change needed)
+
+### S4 — `get_diff` file param (read side) — OK (git-enforced)
+
+`get_diff` passes `file` to `git diff -- <file>` and, only when that diff is
+*empty*, to `git diff --no-index -- /dev/null <file>`. For an out-of-repo path
+(relative `../` or absolute), `git diff -- <file>` fails with a non-empty
+`"... is outside repository"` message, so the `--no-index` content-disclosure
+branch is never reached and no file contents leak (confirmed empirically). The
+boundary is enforced by git itself; left unchanged.
+
+### S5 — Option injection on the new ops — OK (already guarded)
+
+`reset` sha, `cherry-pick` sha, `checkout` ref, `merge` name, and
+`get_commit_detail` sha all pass through `_reject_option`; `reset` additionally
+allow-lists `mode ∈ {soft,mixed,hard}`. For PRs, `pr_create` guards `base`/
+`head` with `_reject_option`, while `title`/`body` are safe as **values of**
+`--title`/`--body` (a leading `-` cannot be re-read as a flag). `stash`
+selectors are built from server-side `int` indices (`stash@{N}`). Covered by
+existing tests in `tests/test_slice3_*.py` and `tests/test_pr.py`.
+
+### S6 — reflog / undo / redo cannot silently destroy work — OK
+
+`undo`/`redo` use `git reset --keep HEAD@{1}`; `--keep` makes git itself refuse
+(non-zero exit, no data loss) when the step would discard uncommitted changes.
+Locked in by `test_undo_refuses_to_discard_uncommitted_work` in
+`tests/test_slice3_gitops.py`.
+
+### S7 — Error / secret leakage on the new endpoints — OK
+
+`pr_create`/`pr_list` failures surface only `gh`'s own combined output (the
+token is never in argv — it goes via stdin on login). Domain errors render as
+`{"error":{code,message}}`; the terminal sends only `{type:error, code,
+message}` control frames. No stack traces, file contents, or tokens are
+exposed. Consistent with F5/F7.
+
+## Accepted risks (Slice 3)
+
+- **The PTY is arbitrary code execution by design.** With the S3 origin check
+  in place, it is reachable only by a same-origin (loopback) browser tab or a
+  local non-browser client — the intended single-user, localhost-only model.
+  Documented in `core/terminal.py` / `web/api/terminal.py`; do not bind the app
+  to a non-loopback interface or front it with a proxy that forwards remote
+  clients or rewrites `Origin`.
+- **`validate_repo_path` accepts any existing directory** (not only git repos)
+  as the terminal `cwd`; this only selects the shell's starting directory, which
+  a shell user can change anyway. No additional exposure.
+
+## Hardening applied (Slice 3)
+
+- Added `_resolve_worktree_file()` in `core/git/client.py`; applied to the
+  read in `get_conflict` and the write in `resolve_conflict` (S1, S2).
+- Added `_origin_allowed()` + handshake rejection in `web/api/terminal.py`
+  (S3).
+- Added `tests/test_slice3_security.py` (11 regression tests) covering conflict
+  path-traversal (write/read, relative/absolute/symlink/`.git`, core + API) and
+  the terminal origin/CSWSH defense.
