@@ -277,6 +277,320 @@ Aborting</pre>
           </div></div>
         </section>
 
+        <!-- ===== Lane palette ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Foundations</span>
+          <h2>Commit-graph lane palette</h2>
+          <p class="sg-note">Six categorical hues the graph renderer cycles per branch column (<span class="mono">--lane-1…6</span>). Lane 1 shares the brand accent hue so a single-branch history reads as iris.</p>
+          <div class="sg-grid">
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--lane-1)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">lane-1</div><div class="sg-swatch__hex">#6E8AFF</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--lane-2)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">lane-2</div><div class="sg-swatch__hex">#3FBF8F</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--lane-3)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">lane-3</div><div class="sg-swatch__hex">#E2A53C</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--lane-4)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">lane-4</div><div class="sg-swatch__hex">#E5719B</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--lane-5)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">lane-5</div><div class="sg-swatch__hex">#49C5D6</div></div></div>
+            <div class="sg-swatch"><div class="sg-swatch__chip" style="background:var(--lane-6)"></div><div class="sg-swatch__meta"><div class="sg-swatch__name">lane-6</div><div class="sg-swatch__hex">#B98BF0</div></div></div>
+          </div>
+        </section>
+
+        <!-- ===== Folder browser ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Git client</span>
+          <h2>Folder browser</h2>
+          <p class="sg-note">The in-app repo picker (lives inside a modal). A <span class="mono">.breadcrumb</span> for navigation over a <span class="mono">.fs-browser</span> list; <span class="mono">.is-repo</span> rows get a badge.</p>
+          <div class="panel"><div class="panel__body stack">
+            <nav class="breadcrumb" aria-label="Path">
+              <button class="breadcrumb__item">~</button>
+              <span class="breadcrumb__sep">/</span>
+              <button class="breadcrumb__item">home</button>
+              <span class="breadcrumb__sep">/</span>
+              <button class="breadcrumb__item">khd</button>
+              <span class="breadcrumb__sep">/</span>
+              <button class="breadcrumb__item">projects</button>
+            </nav>
+            <div class="fs-browser">
+              <button class="fs-browser__row">
+                <svg class="fs-browser__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 4 5.5 2.5h-3A1.5 1.5 0 0 0 1 4v8M1 12V6.5A1.5 1.5 0 0 1 2.5 5h11A1.5 1.5 0 0 1 15 6.5v5A1.5 1.5 0 0 1 13.5 13h-11A1.5 1.5 0 0 1 1 12z"/></svg>
+                <span class="fs-browser__name">..</span>
+              </button>
+              <button class="fs-browser__row is-repo">
+                <svg class="fs-browser__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
+                <span class="fs-browser__name">webgate</span>
+                <span class="fs-browser__badge">
+                  <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="4" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="12" cy="6" r="1.5"/><path d="M4 5.5v5M5.5 4H9a3 3 0 0 1 3 3v.5"/></svg>
+                  repo
+                </span>
+              </button>
+              <button class="fs-browser__row is-repo is-selected">
+                <svg class="fs-browser__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
+                <span class="fs-browser__name">git-automation</span>
+                <span class="fs-browser__badge">
+                  <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="4" cy="4" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="12" cy="6" r="1.5"/><path d="M4 5.5v5M5.5 4H9a3 3 0 0 1 3 3v.5"/></svg>
+                  repo
+                </span>
+              </button>
+              <button class="fs-browser__row">
+                <svg class="fs-browser__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
+                <span class="fs-browser__name">sandbox</span>
+              </button>
+              <button class="fs-browser__row">
+                <svg class="fs-browser__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
+                <span class="fs-browser__name">notes</span>
+              </button>
+            </div>
+            <div class="sg-row" style="justify-content:flex-end">
+              <button class="btn btn--ghost btn--sm">Cancel</button>
+              <button class="btn btn--primary btn--sm">Open repo</button>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Changes / staging panel ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Git client</span>
+          <h2>Changes &amp; commit box</h2>
+          <p class="sg-note">Staged / unstaged / untracked groups with a colour-coded <span class="mono">__status</span> glyph, per-row actions (revealed on hover), and a <span class="mono">.commit-box</span>. Commit stays disabled until a message exists and something is staged.</p>
+          <div class="panel"><div class="panel__body">
+            <div class="changes">
+
+              <div class="changes__section">
+                <div class="changes__head">
+                  <span class="changes__title">Staged</span>
+                  <span class="changes__count">2</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Unstage all</button>
+                  </div>
+                </div>
+                <div class="changes__file is-selected">
+                  <span class="changes__status changes__status--add" title="Added">A</span>
+                  <span class="changes__path"><span class="dir">core/git/</span>graph.py</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Unstage</button>
+                  </div>
+                </div>
+                <div class="changes__file">
+                  <span class="changes__status changes__status--mod" title="Modified">M</span>
+                  <span class="changes__path"><span class="dir">web/static/css/</span>app.css</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Unstage</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="changes__section">
+                <div class="changes__head">
+                  <span class="changes__title">Unstaged</span>
+                  <span class="changes__count">2</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Stage all</button>
+                  </div>
+                </div>
+                <div class="changes__file">
+                  <span class="changes__status changes__status--mod" title="Modified">M</span>
+                  <span class="changes__path"><span class="dir">web/static/</span>styleguide.html</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Discard</button>
+                    <button class="btn btn--secondary btn--sm">Stage</button>
+                  </div>
+                </div>
+                <div class="changes__file">
+                  <span class="changes__status changes__status--del" title="Deleted">D</span>
+                  <span class="changes__path"><span class="dir">core/</span>legacy.py</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Discard</button>
+                    <button class="btn btn--secondary btn--sm">Stage</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="changes__section">
+                <div class="changes__head">
+                  <span class="changes__title">Untracked</span>
+                  <span class="changes__count">1</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Stage all</button>
+                  </div>
+                </div>
+                <div class="changes__file">
+                  <span class="changes__status changes__status--untracked" title="Untracked">?</span>
+                  <span class="changes__path"><span class="dir">docs/</span>graph-notes.md</span>
+                  <div class="changes__actions">
+                    <button class="btn btn--ghost btn--sm">Discard</button>
+                    <button class="btn btn--secondary btn--sm">Stage</button>
+                  </div>
+                </div>
+              </div>
+
+              <hr class="divider" />
+
+              <div class="commit-box">
+                <textarea class="input" rows="3" placeholder="Commit message — summary on the first line">graph: assign lanes client-side and draw SVG edges</textarea>
+                <div class="commit-box__actions">
+                  <span class="text-muted">2 files staged</span>
+                  <button class="btn btn--primary">Commit to <span class="mono" style="margin-left:.3ch">main</span></button>
+                </div>
+              </div>
+
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Diff viewer ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Git client</span>
+          <h2>Diff viewer</h2>
+          <p class="sg-note">Monospaced unified diff with old/new gutters. Line modifiers <span class="mono">--add</span> / <span class="mono">--del</span> / <span class="mono">--meta</span> tint from the success / danger / accent subtle tokens.</p>
+          <div class="diff" role="table" aria-label="Diff of tokens.css">
+            <div class="diff__line diff__line--meta"><span class="diff__ln"></span><span class="diff__ln"></span><span class="diff__code">@@ -78,6 +78,13 @@ :root {</span></div>
+            <div class="diff__line"><span class="diff__ln">78</span><span class="diff__ln">78</span><span class="diff__code">  --danger-border:  rgba(242, 101, 113, 0.34);</span></div>
+            <div class="diff__line"><span class="diff__ln">79</span><span class="diff__ln">79</span><span class="diff__code">  </span></div>
+            <div class="diff__line diff__line--add"><span class="diff__ln"></span><span class="diff__ln">80</span><span class="diff__code">+  /* ---- Commit-graph lane palette ---- */</span></div>
+            <div class="diff__line diff__line--add"><span class="diff__ln"></span><span class="diff__ln">81</span><span class="diff__code">+  --lane-1: #6E8AFF;  /* iris indigo */</span></div>
+            <div class="diff__line diff__line--add"><span class="diff__ln"></span><span class="diff__ln">82</span><span class="diff__code">+  --lane-2: #3FBF8F;  /* teal-green  */</span></div>
+            <div class="diff__line diff__line--del"><span class="diff__ln">80</span><span class="diff__ln"></span><span class="diff__code">-  /* TODO: pick branch colors */</span></div>
+            <div class="diff__line"><span class="diff__ln">81</span><span class="diff__ln">83</span><span class="diff__code">  /* ---- Spacing scale (4px base) ---- */</span></div>
+          </div>
+        </section>
+
+        <!-- ===== Branch menu ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Git client</span>
+          <h2>Branch menu</h2>
+          <p class="sg-note">Local &amp; remote branches in a dropdown surface. The current branch shows a check (<span class="mono">.is-current</span>); ahead/behind counts render as chips.</p>
+          <div class="panel"><div class="panel__body sg-row" style="align-items:flex-start">
+            <div class="dropdown__menu" style="position:static; opacity:1; visibility:visible; transform:none">
+              <div class="branch-menu">
+                <div class="branch-menu__group">
+                  <div class="branch-menu__label">Local</div>
+                  <button class="branch-menu__item is-current">
+                    <svg class="branch-menu__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <span class="branch-menu__name">main</span>
+                    <span class="branch-menu__chips">
+                      <span class="branch-menu__chip branch-menu__chip--ahead" title="2 ahead">↑2</span>
+                      <span class="branch-menu__chip branch-menu__chip--behind" title="1 behind">↓1</span>
+                    </span>
+                  </button>
+                  <button class="branch-menu__item">
+                    <svg class="branch-menu__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <span class="branch-menu__name">feature/graph</span>
+                    <span class="branch-menu__chips">
+                      <span class="branch-menu__chip branch-menu__chip--ahead" title="5 ahead">↑5</span>
+                    </span>
+                  </button>
+                  <button class="branch-menu__item">
+                    <svg class="branch-menu__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <span class="branch-menu__name">fix/diff-gutter</span>
+                  </button>
+                </div>
+                <div class="dropdown__sep"></div>
+                <div class="branch-menu__group">
+                  <div class="branch-menu__label">Remote</div>
+                  <button class="branch-menu__item">
+                    <svg class="branch-menu__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <span class="branch-menu__name">origin/main</span>
+                  </button>
+                  <button class="branch-menu__item">
+                    <svg class="branch-menu__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <span class="branch-menu__name">origin/feature-x</span>
+                  </button>
+                </div>
+                <div class="dropdown__sep"></div>
+                <button class="branch-menu__item"><span class="branch-menu__check"></span><span>Create branch…</span></button>
+              </div>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Commit graph ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Git client</span>
+          <h2>Commit graph</h2>
+          <p class="sg-note">Each commit is a <span class="mono">.graph__row</span>; the left <span class="mono">.graph__lanes</span> SVG cell is drawn by <span class="mono">graph.js</span> (nodes + parent edges). Lane colour comes from <span class="mono">.graph__lane-N</span>. Below is a hand-drawn sample showing a branch &amp; merge — copy this structure.</p>
+          <div class="graph" id="commit-graph" role="tree" aria-label="Commit graph">
+
+            <!-- Row A — merge commit on main (lane-1), HEAD. Two parents: main (down) + feature (down-right). -->
+            <div class="graph__row is-selected" role="treeitem">
+              <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                <path class="graph__edge graph__lane-1" d="M9 19 L9 38"/>
+                <path class="graph__edge graph__lane-2" d="M9 19 C9 30 27 26 27 38"/>
+                <circle class="graph__node graph__lane-1 is-head" cx="9" cy="19" r="4.5"/>
+              </svg>
+              <div class="graph__content">
+                <span class="graph__sha">a1b2c3d</span>
+                <span class="graph__refs">
+                  <span class="graph__ref graph__ref--head">HEAD → main</span>
+                </span>
+                <span class="graph__subject">Merge branch 'feature/graph' into main</span>
+                <span class="graph__meta">Ada · 2h</span>
+              </div>
+            </div>
+
+            <!-- Row B — feature tip (lane-2). main passes through (lane-1). -->
+            <div class="graph__row" role="treeitem">
+              <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                <path class="graph__edge graph__lane-1" d="M9 0 L9 38"/>
+                <path class="graph__edge graph__lane-2" d="M27 0 L27 38"/>
+                <circle class="graph__node graph__lane-2" cx="27" cy="19" r="4.5"/>
+              </svg>
+              <div class="graph__content">
+                <span class="graph__sha">b2c3d4e</span>
+                <span class="graph__refs">
+                  <span class="graph__ref graph__ref--branch">feature/graph</span>
+                </span>
+                <span class="graph__subject">graph: assign lanes client-side</span>
+                <span class="graph__meta">Ada · 3h</span>
+              </div>
+            </div>
+
+            <!-- Row C — feature branch point (lane-2 node, parent on main lane-1). main passes through. -->
+            <div class="graph__row" role="treeitem">
+              <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                <path class="graph__edge graph__lane-1" d="M9 0 L9 38"/>
+                <path class="graph__edge graph__lane-2" d="M27 0 L27 19"/>
+                <path class="graph__edge graph__lane-2" d="M27 19 C27 30 9 26 9 38"/>
+                <circle class="graph__node graph__lane-2" cx="27" cy="19" r="4.5"/>
+              </svg>
+              <div class="graph__content">
+                <span class="graph__sha">c3d4e5f</span>
+                <span class="graph__subject">graph: SVG node + edge classes</span>
+                <span class="graph__meta">Ada · 5h</span>
+              </div>
+            </div>
+
+            <!-- Row D — main (lane-1), origin/main. -->
+            <div class="graph__row" role="treeitem">
+              <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                <path class="graph__edge graph__lane-1" d="M9 0 L9 38"/>
+                <circle class="graph__node graph__lane-1" cx="9" cy="19" r="4.5"/>
+              </svg>
+              <div class="graph__content">
+                <span class="graph__sha">d4e5f6a</span>
+                <span class="graph__refs">
+                  <span class="graph__ref graph__ref--remote">origin/main</span>
+                </span>
+                <span class="graph__subject">tokens: add lane palette</span>
+                <span class="graph__meta">Linus · 1d</span>
+              </div>
+            </div>
+
+            <!-- Row E — main (lane-1), tagged. -->
+            <div class="graph__row" role="treeitem">
+              <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                <path class="graph__edge graph__lane-1" d="M9 0 L9 38"/>
+                <circle class="graph__node graph__lane-1" cx="9" cy="19" r="4.5"/>
+              </svg>
+              <div class="graph__content">
+                <span class="graph__sha">e5f6a7b</span>
+                <span class="graph__refs">
+                  <span class="graph__ref graph__ref--tag">v0.2.0</span>
+                </span>
+                <span class="graph__subject">panels: changes + diff scaffolding</span>
+                <span class="graph__meta">Linus · 1d</span>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
         <!-- ===== MOCKED REPO VIEW ===== -->
         <section class="sg-section">
           <span class="eyebrow">Screen mockup</span>
@@ -398,6 +712,18 @@ From github.com:you/webgate
             <div><code>.toast-stack</code> (fixed container)</div>
             <div><code>.badge</code> --success --warning --danger --accent</div>
             <div><code>.status-dot</code> --ok --warn --err · <code>.spinner</code></div>
+            <div><code>.fs-browser</code> __row __icon __name __badge .is-repo</div>
+            <div><code>.breadcrumb</code> __item __sep</div>
+            <div><code>.changes</code> __section __head __title __count</div>
+            <div><code>.changes__file</code> __status __path __actions</div>
+            <div><code>.changes__status--</code> add del mod ren untracked conflict</div>
+            <div><code>.commit-box</code> __actions</div>
+            <div><code>.diff</code> __line(--add --del --meta) __ln __code</div>
+            <div><code>.branch-menu</code> __group __label __item .is-current</div>
+            <div><code>.branch-menu__</code> check name chips chip(--ahead --behind)</div>
+            <div><code>.graph</code> __row(.is-selected) __lanes __content</div>
+            <div><code>.graph__node</code> .is-head · <code>.graph__edge</code> · <code>.graph__lane-1…6</code></div>
+            <div><code>.graph__ref--</code> head branch remote tag</div>
             <div><code>.text-muted</code> <code>.text-secondary</code> <code>.mono</code> <code>.truncate</code> <code>.sr-only</code></div>
           </div></div>
         </section>

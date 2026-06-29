@@ -76,6 +76,39 @@
      .badge                   small inline label chip
      .spinner                 inline loading spinner
 
+   Git client (slice 2)
+     .fs-browser              folder picker list (inside the repo modal)
+       .breadcrumb            path breadcrumb above the list
+         .breadcrumb__item / __sep
+       .fs-browser__row       one directory row (.is-repo marks a git repo)
+       .fs-browser__icon / __name / __badge
+     .changes                 staging panel (staged / unstaged / untracked)
+       .changes__section      one titled group
+       .changes__head / __title / __count / __actions
+       .changes__file         one file row (.is-staged optional state)
+       .changes__status       status glyph (--add --del --mod --ren --untracked --conflict)
+       .changes__path / __actions
+     .commit-box              commit message textarea + Commit button
+       .commit-box__actions
+     .diff                    unified diff viewer (monospaced, gutters)
+       .diff__line            one line (--add / --del / --meta / --ctx)
+       .diff__ln              gutter line-number cell
+       .diff__code            line text
+     .branch-menu             local/remote branch list (in a dropdown)
+       .branch-menu__group / __label
+       .branch-menu__item     one branch (.is-current marks checked-out)
+       .branch-menu__check / __name / __chips
+       .branch-menu__chip     ahead/behind chip (--ahead / --behind)
+     .graph                   interactive commit graph (rows + SVG lanes)
+       .graph__row            one commit row (hover; .is-selected)
+       .graph__lanes          per-row SVG cell that draws nodes + edges
+       .graph__node           commit dot (SVG; .is-head highlight)
+       .graph__edge           parent connector stroke (SVG)
+       .graph__lane-1..6      sets the lane color on a node/edge (--lane var)
+       .graph__content        sha + subject + refs + meta
+       .graph__sha / __subject / __meta
+       .graph__refs / __ref   ref chips (--head / --branch / --remote / --tag)
+
    Utilities
      .text-muted .text-secondary .mono .sr-only .truncate
    ========================================================================== */
@@ -762,7 +795,430 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; min-he
 }
 
 /* ===========================================================================
-   12. Utilities
+   12. Folder browser (in-app repo picker)
+   =========================================================================== */
+/* Breadcrumb sits above the list: clickable path segments + chevrons. */
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.breadcrumb__item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 22ch;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.breadcrumb__item:hover { background: var(--surface-raised); color: var(--text-primary); }
+.breadcrumb__item:last-child { color: var(--text-primary); font-weight: var(--weight-medium); }
+.breadcrumb__sep { color: var(--text-muted); opacity: 0.7; user-select: none; }
+
+.fs-browser {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-edge);
+}
+
+.fs-browser__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.fs-browser__row:last-child { border-bottom: 0; }
+.fs-browser__row:hover,
+.fs-browser__row:focus-visible { background: var(--surface-raised); color: var(--text-primary); }
+.fs-browser__row.is-selected { background: var(--accent-subtle); color: var(--text-primary); }
+
+.fs-browser__icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+}
+.fs-browser__row.is-repo .fs-browser__icon { color: var(--accent); }
+
+.fs-browser__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The "git repo" marker on the right of a row. */
+.fs-browser__badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-radius: var(--radius-pill);
+}
+
+/* ===========================================================================
+   13. Changes / staging panel
+   =========================================================================== */
+.changes { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.changes__section { display: flex; flex-direction: column; }
+
+.changes__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.changes__title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+.changes__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+.changes__actions { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
+
+.changes__file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.changes__file:hover { background: var(--surface-raised); }
+.changes__file.is-selected { background: var(--accent-subtle); }
+/* Per-row actions stay hidden until the row is hovered/focused to keep lists calm. */
+.changes__file .changes__actions { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.changes__file:hover .changes__actions,
+.changes__file:focus-within .changes__actions { opacity: 1; }
+
+/* Square status glyph (M / A / D / R / U …) — color carries the meaning. */
+.changes__status {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+}
+.changes__status--add       { color: var(--success); background: var(--success-subtle); border-color: var(--success-border); }
+.changes__status--del       { color: var(--danger);  background: var(--danger-subtle);  border-color: var(--danger-border); }
+.changes__status--mod       { color: var(--warning); background: var(--warning-subtle); border-color: var(--warning-border); }
+.changes__status--ren       { color: var(--accent);  background: var(--accent-subtle);  border-color: transparent; }
+.changes__status--untracked { color: var(--text-muted); border-style: dashed; }
+.changes__status--conflict  { color: var(--danger);  background: var(--danger-subtle);  border-color: var(--danger-border); }
+
+.changes__path {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changes__file:hover .changes__path { color: var(--text-primary); }
+/* Dim the directory part, keep the filename bright (frontend wraps it). */
+.changes__path .dir { color: var(--text-muted); }
+
+/* Commit message + button box */
+.commit-box { display: flex; flex-direction: column; gap: var(--space-3); }
+.commit-box .input { min-height: 72px; }
+.commit-box__actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.commit-box__actions .text-muted { font-size: var(--text-xs); }
+
+/* ===========================================================================
+   14. Diff viewer
+   =========================================================================== */
+.diff {
+  --diff-gutter: 3.25rem;
+  overflow: auto;
+  max-height: 480px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-edge);
+}
+
+.diff__line {
+  display: grid;
+  grid-template-columns: var(--diff-gutter) var(--diff-gutter) 1fr;
+  align-items: baseline;
+  border-left: 2px solid transparent;
+}
+/* Gutter line numbers — non-selectable so copy yields clean code. */
+.diff__ln {
+  padding: 0 var(--space-2);
+  text-align: right;
+  color: var(--text-muted);
+  user-select: none;
+  -webkit-user-select: none;
+  border-right: 1px solid var(--border-subtle);
+}
+.diff__code {
+  padding: 0 var(--space-3);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.diff__line--add { background: var(--success-subtle); border-left-color: var(--success); }
+.diff__line--add .diff__code { color: color-mix(in srgb, var(--success) 70%, var(--text-primary)); }
+.diff__line--del { background: var(--danger-subtle); border-left-color: var(--danger); }
+.diff__line--del .diff__code { color: color-mix(in srgb, var(--danger) 70%, var(--text-primary)); }
+/* Hunk headers (@@ … @@) and file meta lines. */
+.diff__line--meta {
+  background: var(--accent-subtle);
+  border-left-color: var(--accent);
+}
+.diff__line--meta .diff__code { color: var(--accent); }
+.diff__line--meta .diff__ln { color: var(--accent); opacity: 0.6; }
+
+/* ===========================================================================
+   15. Branch menu
+   =========================================================================== */
+.branch-menu { display: flex; flex-direction: column; min-width: 260px; }
+
+.branch-menu__group { display: flex; flex-direction: column; }
+.branch-menu__group + .branch-menu__group { margin-top: var(--space-2); }
+.branch-menu__label {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.branch-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.branch-menu__item:hover,
+.branch-menu__item:focus-visible { background: var(--surface-raised); color: var(--text-primary); }
+
+/* Checkmark slot — reserved so names stay aligned whether current or not. */
+.branch-menu__check {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  visibility: hidden;
+}
+.branch-menu__item.is-current { color: var(--text-primary); }
+.branch-menu__item.is-current .branch-menu__check { visibility: visible; }
+.branch-menu__item.is-current .branch-menu__name { font-weight: var(--weight-medium); }
+
+.branch-menu__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-menu__chips { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); }
+.branch-menu__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--space-1);
+  min-width: 18px;
+  height: 16px;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+.branch-menu__chip--ahead  { color: var(--success); background: var(--success-subtle); border-color: var(--success-border); }
+.branch-menu__chip--behind { color: var(--warning); background: var(--warning-subtle); border-color: var(--warning-border); }
+
+/* ===========================================================================
+   16. Commit graph
+   --------------------------------------------------------------------------
+   Each commit is a .graph__row. The left .graph__lanes cell is an inline SVG
+   the renderer draws into (nodes + parent edges); the rest is HTML text. Lane
+   colour comes from .graph__lane-N which sets --lane, consumed by node/edge.
+   Keep selectors flat — this list can be hundreds of rows long.
+   =========================================================================== */
+.graph {
+  --graph-row-h: 38px;
+  --graph-lane-w: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-edge);
+}
+
+.graph__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--graph-row-h);
+  padding-right: var(--space-3);
+  cursor: pointer;
+  /* Background only — cheap to repaint while scrolling a long history. */
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.graph__row:hover { background: var(--surface-raised); }
+.graph__row.is-selected { background: var(--accent-subtle); }
+
+/* The SVG column. Width is lanes × lane-width, set inline by the renderer. */
+.graph__lanes {
+  flex: 0 0 auto;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.graph__edge {
+  fill: none;
+  stroke: var(--lane, var(--lane-1));
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.graph__node {
+  fill: var(--lane, var(--lane-1));
+  stroke: var(--bg-inset);
+  stroke-width: 2.5;
+}
+/* HEAD gets a halo ring so it pops out of the column. */
+.graph__node.is-head {
+  stroke: var(--lane, var(--lane-1));
+  stroke-width: 2;
+  paint-order: stroke;
+  filter: drop-shadow(0 0 3px var(--lane, var(--lane-1)));
+}
+
+/* Per-lane colour helpers — add one to a node or edge element. */
+.graph__lane-1 { --lane: var(--lane-1); }
+.graph__lane-2 { --lane: var(--lane-2); }
+.graph__lane-3 { --lane: var(--lane-3); }
+.graph__lane-4 { --lane: var(--lane-4); }
+.graph__lane-5 { --lane: var(--lane-5); }
+.graph__lane-6 { --lane: var(--lane-6); }
+
+.graph__content {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.graph__sha {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.graph__subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph__row:hover .graph__subject,
+.graph__row.is-selected .graph__subject { color: var(--text-primary); }
+.graph__meta {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.graph__refs { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); }
+.graph__ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.graph__ref--head   { color: var(--accent);  background: var(--accent-subtle);  border-color: transparent; font-weight: var(--weight-semibold); }
+.graph__ref--branch { color: var(--lane-1);  background: color-mix(in srgb, var(--lane-1) 14%, transparent); border-color: transparent; }
+.graph__ref--remote { color: var(--text-secondary); border-style: dashed; }
+.graph__ref--tag    { color: var(--warning); background: var(--warning-subtle); border-color: var(--warning-border); }
+
+/* ===========================================================================
+   17. Utilities
    =========================================================================== */
 .text-muted     { color: var(--text-muted); }
 .text-secondary { color: var(--text-secondary); }
@@ -780,7 +1236,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; min-he
 }
 
 /* ===========================================================================
-   13. Keyframes
+   18. Keyframes
    =========================================================================== */
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -790,7 +1246,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; min-he
 }
 
 /* ===========================================================================
-   14. Responsive
+   19. Responsive
    =========================================================================== */
 @media (max-width: 640px) {
   .topbar { gap: var(--space-2); padding-inline: var(--space-3); }
@@ -801,7 +1257,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; min-he
 }
 
 /* ===========================================================================
-   15. Accessibility — honor reduced motion
+   20. Accessibility — honor reduced motion
    =========================================================================== */
 @media (prefers-reduced-motion: reduce) {
   *,
