@@ -49,6 +49,18 @@ All of this runs automatically, and a live dashboard shows the run.
 - **One shared core, multiple frontends.** Domain logic lives in `core/` and
   knows nothing about UI. The web UI and the desktop app are two delivery
   methods over the *same* frontend, not two codebases.
+- **Independent, composable tools.** This is *one tool that combines several
+  independent tools*. The git/GitHub cockpit and the agentic workflow each run
+  **standalone** — either can boot and be useful with the other absent. Neither
+  feature imports the other; they may share low-level `core/` libraries as plain
+  utilities, but there is no feature-to-feature dependency. A separate
+  **integration layer (an API / orchestrator)** is the combiner: independent
+  tools *register* into it, and it composes them (e.g. lets the agentic workflow
+  act through the git cockpit) plus any tool added later. The **skill tree lives
+  inside the agentic workflow** and routes tasks to its sub-agents — it is not
+  the cross-tool glue. Architecture target: a thin host that mounts
+  self-contained tool modules (each with its own entry point), so new tools can
+  be added without touching existing ones.
 - **Ship Phase 1 standalone.** The GitHub layer must be genuinely useful with
   zero agentic features present.
 - **Lean on existing auth.** Reuse my existing `gh auth` / local git config — no
@@ -108,9 +120,13 @@ git_automation/
 - `web` — exposes `core` over HTTP/WebSocket and serves the UI. Depends on `core`.
 - `desktop` — reuses the web frontend, adds tray + OS notifications + a
   background poller. Depends on `web` (embedded) + `core/sync`.
-- `skilltree` — owns the capability graph; serves graph data to the UI and
-  routing decisions to `agents`. Depends on `core/models`.
-- `agents` — manager + sub-agents. Depends on `core`, `skilltree`, Claude Agent SDK.
+- `agents` — the agentic-workflow tool: manager + sub-agents, **and the skill
+  tree** (capability graph that routes tasks to sub-agents). Runs standalone.
+  Depends on `core` libraries + Claude Agent SDK. (`skilltree` is a submodule of
+  this tool, not a top-level peer.)
+- `integration` — the combiner: a thin registry/router API where independent
+  tools register and are composed (agentic workflow ⇄ git cockpit ⇄ future
+  tools). Depends only on each tool's public interface, never their internals.
 
 ---
 
