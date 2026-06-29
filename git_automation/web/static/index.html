@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>git-automation</title>
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <div class="app">
+
+    <!-- ============================ Top bar ============================ -->
+    <header class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__mark">g</span>
+        <span>git-automation</span>
+      </div>
+
+      <div class="topbar__context">
+        <!-- Repo/branch meta — hidden until a repo is loaded -->
+        <div class="repo-meta" id="topbar-meta" hidden>
+          <span class="repo-meta__item">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
+            <span class="mono truncate" id="meta-repo"></span>
+          </span>
+          <span class="repo-meta__item">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+            <span class="mono" id="meta-branch"></span>
+          </span>
+          <span id="meta-status"></span>
+        </div>
+      </div>
+
+      <div class="topbar__actions">
+        <button class="btn btn--icon btn--sm" id="btn-refresh" aria-label="Refresh repository status" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4"/></svg>
+        </button>
+        <button class="btn btn--secondary btn--sm" id="btn-identity">Identity</button>
+      </div>
+    </header>
+
+    <!-- ============================ Main ============================ -->
+    <main class="main">
+      <div class="container stack stack--loose">
+
+        <!-- ===== Open repository ===== -->
+        <section class="panel">
+          <div class="panel__header">
+            <h1 class="panel__title">Repository</h1>
+          </div>
+          <div class="panel__body">
+            <form class="toolbar" id="open-form" novalidate>
+              <div class="field toolbar__spacer">
+                <label class="field__label" for="repo-path">Local repository path</label>
+                <input
+                  class="input"
+                  id="repo-path"
+                  name="path"
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="/absolute/path/to/your/repo"
+                  aria-describedby="repo-path-hint"
+                />
+                <span class="field__hint" id="repo-path-hint">An absolute path to a local git repository on this machine.</span>
+              </div>
+              <button class="btn btn--primary" type="submit" id="btn-open" style="align-self:flex-start;margin-top:var(--space-5)">Open</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ===== Repo status + actions ===== -->
+        <section class="panel" id="repo-panel" hidden>
+          <div class="panel__header">
+            <h2 class="panel__title">Status &amp; remote operations</h2>
+            <div class="cluster" id="status-badges" aria-live="polite"></div>
+          </div>
+          <div class="panel__body stack">
+
+            <div class="toolbar">
+              <div class="field toolbar__remote">
+                <label class="field__label" for="remote-select">Remote</label>
+                <select class="select" id="remote-select" aria-label="Target remote"></select>
+              </div>
+              <div class="toolbar__spacer"></div>
+              <button class="btn btn--primary" id="btn-push" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                Push
+              </button>
+              <button class="btn btn--secondary" id="btn-pull" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                Pull
+              </button>
+              <button class="btn btn--secondary" id="btn-fetch" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4"/></svg>
+                Fetch
+              </button>
+            </div>
+
+            <hr class="divider" />
+
+            <!-- Command output console — populated by JS -->
+            <div id="console-slot" aria-live="polite"></div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ===================== Onboarding modal ===================== -->
+  <div class="modal-overlay" id="onboarding-overlay" role="presentation">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" aria-describedby="onboarding-subtitle">
+      <div class="modal__header">
+        <h2 class="modal__title" id="onboarding-title">Welcome to git-automation</h2>
+        <p class="modal__subtitle" id="onboarding-subtitle">Set your git identity and connect GitHub. We&rsquo;ll only ask once.</p>
+      </div>
+      <form id="onboarding-form" novalidate>
+        <div class="modal__body stack">
+          <div class="field" id="field-name">
+            <label class="field__label" for="ob-name">Git name</label>
+            <input class="input" id="ob-name" name="name" type="text" autocomplete="name" placeholder="Ada Lovelace" />
+          </div>
+          <div class="field" id="field-email">
+            <label class="field__label" for="ob-email">Git email</label>
+            <input class="input" id="ob-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" />
+            <span class="field__error">Enter a name and email to continue.</span>
+          </div>
+          <button class="btn btn--secondary btn--block" type="submit" id="btn-save-identity">Save identity</button>
+
+          <hr class="divider" />
+
+          <div class="field" id="field-token">
+            <label class="field__label" for="ob-token">GitHub token</label>
+            <input class="input" id="ob-token" name="token" type="password" autocomplete="off" placeholder="ghp_&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;&bullet;" />
+            <span class="field__hint">
+              Authenticates the <span class="mono">gh</span> CLI.
+              <a class="link" href="#" id="token-help-toggle" role="button" aria-expanded="false" aria-controls="token-help">How to get a token &rarr;</a>
+            </span>
+            <span class="field__error">That token was rejected. Generate a new one with repo scope.</span>
+            <div class="console" id="token-help" hidden>
+              <div class="console__head"><span>Generate a personal access token</span></div>
+              <pre class="console__body" id="token-help-steps"></pre>
+            </div>
+          </div>
+          <button class="btn btn--secondary btn--block" type="button" id="btn-save-token">Connect GitHub</button>
+        </div>
+      </form>
+      <div class="modal__footer">
+        <button class="btn btn--ghost" type="button" id="btn-skip-onboarding">Skip for now</button>
+        <button class="btn btn--primary" type="button" id="btn-done-onboarding">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="false"></div>
+</body>
+</html>
