@@ -119,11 +119,28 @@ git_automation/
 **Goal:** a full git client + GitHub cockpit, as a desktop app *and* a web UI,
 that removes the need to manually check github.com.
 
+### 5.0 Cross-cutting requirements (apply to all of Phase 1)
+
+- **Shippable to other people.** No identity is hard-coded. On startup the app
+  checks for a configured git user (`user.name` / `user.email`) and an
+  authenticated `gh` session. If either is missing, it shows a **first-run
+  onboarding prompt** to set the git identity and to authenticate `gh` (kicking
+  off / guiding `gh auth login`), then proceeds.
+- **Modular & readable.** Clear module boundaries, small focused files, typed
+  interfaces — so future edits are easy.
+- **Performance-first.** Non-blocking subprocess calls, cached/conditional
+  GitHub requests, no UI jank.
+- **Looks good — dark theme.** A cohesive dark color palette and a polished,
+  modern visual design across the whole UI.
+
 ### 5.1 Git client features (GitKraken-style)
 
 - Clone / open local repositories.
 - Stage / unstage, view diffs.
-- Commit, push, pull, fetch.
+- Commit.
+- **Push / Pull / Fetch with remote selection.** Pressing Push (or Pull /
+  Fetch) discovers the repo's configured remotes and lets the user **pick which
+  remote** to act on (defaulting sensibly to the branch's upstream / `origin`).
 - Create / switch / merge branches.
 - Commit history view (graph).
 
