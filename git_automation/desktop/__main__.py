@@ -4,9 +4,7 @@ from __future__ import annotations
 
 
 def main() -> None:
-    raise SystemExit(
-        "Desktop shell not implemented yet. Run the web app with `make web` for now."
-    )
+    raise SystemExit("Desktop shell not implemented yet. Run the web app with `make web` for now.")
 
 
 if __name__ == "__main__":

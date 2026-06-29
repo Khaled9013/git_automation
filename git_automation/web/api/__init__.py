@@ -1,0 +1,25 @@
+"""FastAPI API layer: routers and the domain-error handler."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from git_automation.core.errors import GitAutomationError
+
+from . import identity, repo
+
+api_router = APIRouter(prefix="/api")
+api_router.include_router(identity.router)
+api_router.include_router(repo.router)
+
+
+def register_error_handlers(app: FastAPI) -> None:
+    """Register the handler that renders :class:`GitAutomationError` as JSON."""
+
+    @app.exception_handler(GitAutomationError)
+    async def _handle_domain_error(_request: Request, exc: GitAutomationError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
+
+
+__all__ = ["api_router", "register_error_handlers"]
