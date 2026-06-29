@@ -98,8 +98,6 @@ def test_api_fetch_rejects_option_like_remote(repo: str) -> None:
 
 def test_api_branch_delete_rejects_option_like_name(repo: str) -> None:
     api = TestClient(create_app(), raise_server_exceptions=False)
-    resp = api.post(
-        "/api/git/branch/delete", json={"path": repo, "name": "--force", "force": True}
-    )
+    resp = api.post("/api/git/branch/delete", json={"path": repo, "name": "--force", "force": True})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "invalid_argument"

@@ -11,24 +11,37 @@ from pydantic import BaseModel
 
 from git_automation.core.git.client import (
     checkout_branch,
+    checkout_ref,
+    cherry_pick,
     commit,
     create_branch,
     delete_branch,
     discard,
     get_changes,
+    get_commit_detail,
     get_diff,
     get_graph,
+    get_reflog,
+    get_refs,
     list_branches,
     merge_branch,
+    redo,
+    reset,
     stage,
+    undo,
     unstage,
 )
 from git_automation.core.models import (
     BranchList,
     Changes,
     CommandResult,
+    CommitDetail,
     DiffResult,
     GraphCommit,
+    MergeResult,
+    ReflogEntry,
+    RefsBundle,
+    UndoResult,
 )
 
 router = APIRouter()
@@ -69,6 +82,34 @@ class BranchDeleteRequest(BaseModel):
     path: str
     name: str
     force: bool = False
+
+
+class CheckoutRequest(BaseModel):
+    """Body for checking out a branch name or a commit SHA (detached)."""
+
+    path: str
+    ref: str
+
+
+class ResetRequest(BaseModel):
+    """Body for moving HEAD to ``sha`` with a reset ``mode``."""
+
+    path: str
+    sha: str
+    mode: str
+
+
+class ShaRequest(BaseModel):
+    """Body for an operation targeting a single commit ``sha``."""
+
+    path: str
+    sha: str
+
+
+class PathRequest(BaseModel):
+    """Body for an operation that only needs a repository ``path``."""
+
+    path: str
 
 
 class GraphResponse(BaseModel):
@@ -148,7 +189,7 @@ async def git_branch_delete(body: BranchDeleteRequest) -> CommandResult:
 
 
 @router.post("/git/branch/merge")
-async def git_branch_merge(body: BranchNameRequest) -> CommandResult:
+async def git_branch_merge(body: BranchNameRequest) -> MergeResult:
     """Merge the given branch into the current branch (destructive)."""
     return await merge_branch(body.path, body.name)
 
@@ -163,3 +204,69 @@ async def read_graph(
 ) -> GraphResponse:
     """Return the commit graph (all refs, date-order) for ``path``."""
     return GraphResponse(commits=await get_graph(path, limit))
+
+
+# --- Refs sidebar ---------------------------------------------------------
+
+
+@router.get("/repo/refs")
+async def read_refs(path: str = Query(...)) -> RefsBundle:
+    """Return branches, tags, worktrees, and stashes for the sidebar."""
+    return await get_refs(path)
+
+
+# --- Commit detail --------------------------------------------------------
+
+
+@router.get("/repo/commit")
+async def read_commit(
+    path: str = Query(...),
+    sha: str = Query(...),
+) -> CommitDetail:
+    """Return full metadata and changed files for commit ``sha``."""
+    return await get_commit_detail(path, sha)
+
+
+# --- Navigation / history rewrite -----------------------------------------
+
+
+@router.post("/git/checkout")
+async def git_checkout(body: CheckoutRequest) -> CommandResult:
+    """Check out a branch name or commit SHA (detached HEAD)."""
+    return await checkout_ref(body.path, body.ref)
+
+
+@router.post("/git/reset")
+async def git_reset(body: ResetRequest) -> CommandResult:
+    """Move HEAD to ``sha`` with the given reset mode (destructive)."""
+    return await reset(body.path, body.sha, body.mode)
+
+
+@router.post("/git/cherry-pick")
+async def git_cherry_pick(body: ShaRequest) -> CommandResult:
+    """Apply commit ``sha`` onto the current branch."""
+    return await cherry_pick(body.path, body.sha)
+
+
+# --- Undo / Redo (reflog) -------------------------------------------------
+
+
+@router.get("/repo/reflog")
+async def read_reflog(
+    path: str = Query(...),
+    limit: int = Query(50),
+) -> list[ReflogEntry]:
+    """Return the HEAD reflog entries powering undo/redo."""
+    return await get_reflog(path, limit)
+
+
+@router.post("/git/undo")
+async def git_undo(body: PathRequest) -> UndoResult:
+    """Move HEAD back one reflog step (best-effort)."""
+    return await undo(body.path)
+
+
+@router.post("/git/redo")
+async def git_redo(body: PathRequest) -> UndoResult:
+    """Move HEAD forward one reflog step (best-effort)."""
+    return await redo(body.path)

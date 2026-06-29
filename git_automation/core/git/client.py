@@ -6,6 +6,8 @@ that operate on a repository validate the path first.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from git_automation.core import process
 from git_automation.core.errors import GitAutomationError
 from git_automation.core.models import (
@@ -14,12 +16,23 @@ from git_automation.core.models import (
     BranchRef,
     Changes,
     CommandResult,
+    CommitDetail,
+    CommitFile,
+    Conflict,
     DiffResult,
     FileChange,
     GraphCommit,
+    MergeResult,
+    MergeStatus,
+    ReflogEntry,
+    RefsBundle,
     Remote,
     RepoStatus,
+    Stash,
+    Tag,
+    UndoResult,
     Upstream,
+    Worktree,
 )
 from git_automation.core.process import validate_repo_path
 
@@ -418,11 +431,34 @@ async def delete_branch(path: str, name: str, force: bool = False) -> CommandRes
     return await run_git(["branch", flag, "--", name], cwd=cwd)
 
 
-async def merge_branch(path: str, name: str) -> CommandResult:
-    """Merge branch ``name`` into the current branch. The UI confirms first."""
+async def _conflicting_paths(cwd: str) -> list[str]:
+    """Return the repo-relative paths with unmerged (conflict) entries."""
+    result = await run_git(["diff", "--name-only", "--diff-filter=U"], cwd=cwd)
+    return [line for line in result.output.splitlines() if line]
+
+
+async def merge_branch(path: str, name: str) -> MergeResult:
+    """Merge branch ``name`` into the current branch, reporting conflicts.
+
+    Args:
+        path: Path to a local repository.
+        name: The branch (or any commit-ish) to merge in.
+
+    Returns:
+        A :class:`MergeResult`. On a conflicting merge, ``ok`` is ``False``,
+        ``conflicted`` is ``True``, and ``conflicts`` lists the unmerged paths.
+        The UI confirms before calling this.
+    """
     cwd = validate_repo_path(path)
     _reject_option(name, "branch name")
-    return await run_git(["merge", name], cwd=cwd)
+    result = await run_git(["merge", name], cwd=cwd)
+    conflicts = await _conflicting_paths(cwd)
+    return MergeResult(
+        ok=result.ok,
+        output=result.output,
+        conflicted=bool(conflicts),
+        conflicts=conflicts,
+    )
 
 
 # --- Commit graph ---------------------------------------------------------
@@ -490,3 +526,419 @@ async def get_graph(path: str, limit: int = 200) -> list[GraphCommit]:
         if commit is not None:
             commits.append(commit)
     return commits
+
+
+# --- Refs sidebar ---------------------------------------------------------
+
+
+async def _list_tags(cwd: str) -> list[Tag]:
+    """Return the repository's tags (``git tag``)."""
+    result = await run_git(["tag"], cwd=cwd)
+    return [Tag(name=name) for name in result.output.splitlines() if name]
+
+
+async def _list_worktrees(cwd: str) -> list[Worktree]:
+    """Return the repository's working trees (``git worktree list --porcelain``)."""
+    result = await run_git(["worktree", "list", "--porcelain"], cwd=cwd)
+    here = Path(cwd).resolve()
+    worktrees: list[Worktree] = []
+    wt_path: str | None = None
+    branch: str | None = None
+
+    def flush() -> None:
+        if wt_path is not None:
+            worktrees.append(
+                Worktree(
+                    path=wt_path,
+                    branch=branch,
+                    is_current=Path(wt_path).resolve() == here,
+                )
+            )
+
+    for line in result.output.splitlines():
+        if line.startswith("worktree "):
+            flush()
+            wt_path = line[len("worktree ") :]
+            branch = None
+        elif line.startswith("branch "):
+            ref = line[len("branch ") :]
+            branch = ref[len("refs/heads/") :] if ref.startswith("refs/heads/") else ref
+    flush()
+    return worktrees
+
+
+async def _list_stashes(cwd: str) -> list[Stash]:
+    """Return the stash entries (``git stash list``)."""
+    result = await run_git(["stash", "list", "--format=%gd%x1f%gs"], cwd=cwd)
+    stashes: list[Stash] = []
+    for line in result.output.splitlines():
+        if _SEP not in line:
+            continue
+        selector, message = line.split(_SEP, 1)
+        raw = selector[len("stash@{") : -1] if selector.startswith("stash@{") else ""
+        try:
+            stashes.append(Stash(index=int(raw), message=message))
+        except ValueError:
+            continue
+    return stashes
+
+
+async def get_refs(path: str) -> RefsBundle:
+    """Return every ref powering the sidebar for the repository at ``path``.
+
+    Aggregates local branches (with upstream + ahead/behind), remote-tracking
+    refs, tags, working trees, and stashes.
+
+    Args:
+        path: Path to a local repository.
+    """
+    cwd = validate_repo_path(path)
+    branches = await list_branches(cwd)
+    return RefsBundle(
+        local=branches.local,
+        remote=branches.remote,
+        tags=await _list_tags(cwd),
+        worktrees=await _list_worktrees(cwd),
+        stashes=await _list_stashes(cwd),
+    )
+
+
+# --- Commit detail --------------------------------------------------------
+
+
+def _parse_numstat(output: str) -> dict[str, tuple[int, int]]:
+    """Parse ``git show --numstat`` lines into ``{path: (additions, deletions)}``.
+
+    Binary files report ``-`` for both counts; those are recorded as ``(0, 0)``.
+    """
+    counts: dict[str, tuple[int, int]] = {}
+    for line in output.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        add_raw, del_raw, file = parts[0], parts[1], parts[-1]
+        additions = int(add_raw) if add_raw.isdigit() else 0
+        deletions = int(del_raw) if del_raw.isdigit() else 0
+        counts[file] = (additions, deletions)
+    return counts
+
+
+async def get_commit_detail(path: str, sha: str) -> CommitDetail:
+    """Return full metadata and the changed-file list for commit ``sha``.
+
+    Args:
+        path: Path to a local repository.
+        sha: The commit to describe (branch name, tag, or SHA).
+
+    Returns:
+        A :class:`CommitDetail` with parents, author/email/date, subject, body,
+        ref decorations, and per-file additions/deletions.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` if ``sha`` starts with ``-``;
+            ``unknown_commit`` (404) if the commit cannot be resolved.
+    """
+    cwd = validate_repo_path(path)
+    _reject_option(sha, "commit")
+    meta_fmt = _SEP.join(["%H", "%h", "%P", "%an", "%ae", "%aI", "%D", "%s"])
+    meta = await run_git(["show", "-s", f"--format={meta_fmt}", sha], cwd=cwd)
+    if not meta.ok or _SEP not in meta.output:
+        raise GitAutomationError("unknown_commit", f"Unknown commit: {sha}", 404)
+    fields = (meta.output.split(_SEP) + [""] * 8)[:8]
+    full, short, parents, author, email, date, refs, subject = fields
+    body_result = await run_git(["show", "-s", "--format=%b", sha], cwd=cwd)
+    numstat = await run_git(["show", "--numstat", "--format=", sha], cwd=cwd)
+    name_status = await run_git(["show", "--name-status", "--format=", sha], cwd=cwd)
+    counts = _parse_numstat(numstat.output)
+    files: list[CommitFile] = []
+    for line in name_status.output.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0][0]
+        file = parts[-1]
+        additions, deletions = counts.get(file, (0, 0))
+        files.append(CommitFile(path=file, status=status, additions=additions, deletions=deletions))
+    ref_list = [ref.strip() for ref in refs.split(",") if ref.strip()]
+    return CommitDetail(
+        sha=full,
+        short=short,
+        parents=parents.split() if parents else [],
+        author=author,
+        email=email,
+        date=date,
+        subject=subject,
+        body=body_result.output,
+        refs=ref_list,
+        files=files,
+    )
+
+
+# --- Navigation / history rewrite -----------------------------------------
+
+
+async def checkout_ref(path: str, ref: str) -> CommandResult:
+    """Check out ``ref`` -- a branch name (attached) or a commit SHA (detached).
+
+    Args:
+        path: Path to a local repository.
+        ref: A branch name or commit-ish; a non-branch checks out detached HEAD.
+    """
+    cwd = validate_repo_path(path)
+    _reject_option(ref, "ref")
+    return await run_git(["checkout", ref], cwd=cwd)
+
+
+async def reset(path: str, sha: str, mode: str) -> CommandResult:
+    """Move ``HEAD`` to ``sha`` with the given reset ``mode``. Destructive.
+
+    Args:
+        path: Path to a local repository.
+        sha: The commit-ish to reset onto.
+        mode: One of ``soft``, ``mixed``, or ``hard``.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` if ``mode`` is unrecognized or
+            ``sha`` starts with ``-``.
+    """
+    cwd = validate_repo_path(path)
+    if mode not in {"soft", "mixed", "hard"}:
+        raise GitAutomationError(
+            "invalid_argument",
+            "Invalid reset mode: must be one of soft, mixed, hard.",
+            400,
+        )
+    _reject_option(sha, "commit")
+    return await run_git(["reset", f"--{mode}", sha], cwd=cwd)
+
+
+async def cherry_pick(path: str, sha: str) -> CommandResult:
+    """Apply commit ``sha`` onto the current branch (``git cherry-pick``)."""
+    cwd = validate_repo_path(path)
+    _reject_option(sha, "commit")
+    return await run_git(["cherry-pick", sha], cwd=cwd)
+
+
+# --- Merge lifecycle + conflicts ------------------------------------------
+
+
+async def _git_path(cwd: str, name: str) -> Path:
+    """Resolve a path inside the git dir (handles linked worktrees)."""
+    result = await run_git(["rev-parse", "--git-path", name], cwd=cwd)
+    candidate = Path(result.output.strip())
+    return candidate if candidate.is_absolute() else Path(cwd) / candidate
+
+
+async def merge_status(path: str) -> MergeStatus:
+    """Return the in-progress merge state of the repository at ``path``.
+
+    Args:
+        path: Path to a local repository.
+
+    Returns:
+        A :class:`MergeStatus`: whether a merge is underway, the unmerged paths,
+        and the prepared ``MERGE_MSG`` text (empty when not merging).
+    """
+    cwd = validate_repo_path(path)
+    head = await run_git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=cwd)
+    merging = head.ok
+    conflicts = await _conflicting_paths(cwd)
+    message = ""
+    if merging:
+        merge_msg = await _git_path(cwd, "MERGE_MSG")
+        if merge_msg.is_file():
+            message = merge_msg.read_text(errors="replace")
+    return MergeStatus(merging=merging, conflicts=conflicts, message=message)
+
+
+async def _show_stage(cwd: str, stage: int, file: str) -> str | None:
+    """Return the blob content of a merge ``stage`` for ``file``, or ``None``.
+
+    Uses :func:`process.run_process` directly so the blob's exact bytes (including
+    any trailing newline) are preserved rather than whitespace-stripped. A missing
+    stage (e.g. a file added or deleted on only one side) yields ``None``.
+    """
+    result = await process.run_process(["git", "show", f":{stage}:{file}"], cwd=cwd)
+    return result.stdout if result.ok else None
+
+
+async def get_conflict(path: str, file: str) -> Conflict:
+    """Return the three merge stages plus the working copy of ``file``.
+
+    Args:
+        path: Path to a local repository.
+        file: The repo-relative conflicted path.
+
+    Returns:
+        A :class:`Conflict` with ``base`` (stage 1), ``ours`` (stage 2),
+        ``theirs`` (stage 3), and ``merged`` (the working file with markers).
+        A missing stage is ``None`` and does not crash. ``binary`` is set when
+        any retrieved content contains a NUL byte.
+    """
+    cwd = validate_repo_path(path)
+    base = await _show_stage(cwd, 1, file)
+    ours = await _show_stage(cwd, 2, file)
+    theirs = await _show_stage(cwd, 3, file)
+    working = Path(cwd) / file
+    merged = working.read_text(errors="replace") if working.is_file() else None
+    binary = any("\x00" in text for text in (base, ours, theirs, merged) if text is not None)
+    return Conflict(
+        file=file,
+        base=base,
+        ours=ours,
+        theirs=theirs,
+        merged=merged,
+        binary=binary,
+    )
+
+
+async def resolve_conflict(path: str, file: str, content: str) -> CommandResult:
+    """Write ``content`` to the working ``file`` and stage it (``git add``).
+
+    Args:
+        path: Path to a local repository.
+        file: The repo-relative path being resolved.
+        content: The resolved file contents to write.
+    """
+    cwd = validate_repo_path(path)
+    target = Path(cwd) / file
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
+    return await run_git(["add", "--", file], cwd=cwd)
+
+
+async def merge_continue(path: str, message: str | None = None) -> CommandResult:
+    """Finalize an in-progress merge by committing it.
+
+    Args:
+        path: Path to a local repository.
+        message: Optional commit message; defaults to the prepared ``MERGE_MSG``.
+
+    Raises:
+        GitAutomationError: ``unresolved_conflicts`` (409) if conflicts remain.
+    """
+    cwd = validate_repo_path(path)
+    if await _conflicting_paths(cwd):
+        raise GitAutomationError(
+            "unresolved_conflicts",
+            "Cannot continue the merge while conflicts remain unresolved.",
+            409,
+        )
+    args = ["commit", "-m", message] if message else ["commit", "--no-edit"]
+    return await run_git(args, cwd=cwd)
+
+
+async def merge_abort(path: str) -> CommandResult:
+    """Abort an in-progress merge and restore the pre-merge state."""
+    cwd = validate_repo_path(path)
+    return await run_git(["merge", "--abort"], cwd=cwd)
+
+
+# --- Stash ----------------------------------------------------------------
+
+
+async def stash(
+    path: str,
+    message: str | None = None,
+    include_untracked: bool = False,
+) -> CommandResult:
+    """Save the working-tree changes onto the stash stack.
+
+    Args:
+        path: Path to a local repository.
+        message: Optional stash label.
+        include_untracked: When True, also stash untracked files (``-u``).
+    """
+    cwd = validate_repo_path(path)
+    args = ["stash", "push"]
+    if include_untracked:
+        args.append("--include-untracked")
+    if message:
+        args += ["-m", message]
+    return await run_git(args, cwd=cwd)
+
+
+def _stash_ref(index: int) -> str:
+    """Return the ``stash@{N}`` selector for a stash ``index``."""
+    return f"stash@{{{index}}}"
+
+
+async def stash_pop(path: str, index: int | None = None) -> CommandResult:
+    """Apply and remove a stash entry (default: the most recent)."""
+    cwd = validate_repo_path(path)
+    args = ["stash", "pop"]
+    if index is not None:
+        args.append(_stash_ref(index))
+    return await run_git(args, cwd=cwd)
+
+
+async def stash_apply(path: str, index: int) -> CommandResult:
+    """Apply stash ``index`` without removing it from the stack."""
+    cwd = validate_repo_path(path)
+    return await run_git(["stash", "apply", _stash_ref(index)], cwd=cwd)
+
+
+async def stash_drop(path: str, index: int) -> CommandResult:
+    """Remove stash ``index`` from the stack. Destructive; the UI confirms."""
+    cwd = validate_repo_path(path)
+    return await run_git(["stash", "drop", _stash_ref(index)], cwd=cwd)
+
+
+# --- Undo / Redo (reflog-based) -------------------------------------------
+
+
+async def get_reflog(path: str, limit: int = 50) -> list[ReflogEntry]:
+    """Return up to ``limit`` ``HEAD`` reflog entries (newest first).
+
+    Args:
+        path: Path to a local repository.
+        limit: Maximum number of entries to return.
+    """
+    cwd = validate_repo_path(path)
+    result = await run_git(["reflog", "--format=%gd%x1f%gs", f"-n{limit}"], cwd=cwd)
+    entries: list[ReflogEntry] = []
+    for line in result.output.splitlines():
+        if _SEP not in line:
+            continue
+        selector, subject = line.split(_SEP, 1)
+        entries.append(ReflogEntry(selector=selector, subject=subject))
+    return entries
+
+
+async def _reflog_subject(cwd: str, selector: str) -> str:
+    """Return the reflog subject for ``selector`` (e.g. ``HEAD@{0}``)."""
+    result = await run_git(["reflog", "--format=%gs", "-n1", selector], cwd=cwd)
+    lines = result.output.splitlines()
+    return lines[0] if lines else ""
+
+
+async def _reflog_step(cwd: str) -> UndoResult:
+    """Move ``HEAD`` one reflog step with ``git reset --keep HEAD@{1}``.
+
+    ``--keep`` refuses (non-zero exit) when the step would discard uncommitted
+    work, so that safety is enforced by git itself.
+    """
+    undone = await _reflog_subject(cwd, "HEAD@{0}")
+    result = await run_git(["reset", "--keep", "HEAD@{1}"], cwd=cwd)
+    return UndoResult(ok=result.ok, output=result.output, undone=undone)
+
+
+async def undo(path: str) -> UndoResult:
+    """Move ``HEAD`` back one reflog step (best-effort undo).
+
+    Uses ``git reset --keep HEAD@{1}``; this refuses if it would discard
+    uncommitted work and cannot reverse pushes or other destructive operations.
+    """
+    cwd = validate_repo_path(path)
+    return await _reflog_step(cwd)
+
+
+async def redo(path: str) -> UndoResult:
+    """Move ``HEAD`` forward one reflog step (best-effort redo).
+
+    After an undo, the prior position is recorded at ``HEAD@{1}``, so a redo is
+    the same reflog step. Best-effort: it cannot reverse pushes or destructive
+    operations.
+    """
+    cwd = validate_repo_path(path)
+    return await _reflog_step(cwd)

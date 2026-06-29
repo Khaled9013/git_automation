@@ -117,6 +117,122 @@ class GraphCommit(BaseModel):
     is_head: bool
 
 
+# --- Slice 3: refs sidebar, commit detail, merge/conflicts, stash, reflog ---
+
+
+class Tag(BaseModel):
+    """A git tag reference (name only)."""
+
+    name: str
+
+
+class Worktree(BaseModel):
+    """A linked or main working tree of a repository."""
+
+    path: str
+    branch: str | None
+    is_current: bool
+
+
+class Stash(BaseModel):
+    """A single stash entry (``git stash list``)."""
+
+    index: int
+    message: str
+
+
+class RefsBundle(BaseModel):
+    """The full set of refs powering the sidebar (branches/tags/worktrees/stashes)."""
+
+    local: list[Branch]
+    remote: list[BranchRef]
+    tags: list[Tag]
+    worktrees: list[Worktree]
+    stashes: list[Stash]
+
+
+class CommitFile(BaseModel):
+    """A single file changed by a commit, with line-count deltas."""
+
+    path: str
+    status: str
+    additions: int
+    deletions: int
+
+
+class CommitDetail(BaseModel):
+    """Full metadata and changed-file list for a single commit."""
+
+    sha: str
+    short: str
+    parents: list[str]
+    author: str
+    email: str
+    date: str
+    subject: str
+    body: str
+    refs: list[str]
+    files: list[CommitFile]
+
+
+class MergeResult(BaseModel):
+    """The outcome of a merge/pull, including any conflicting paths."""
+
+    ok: bool
+    output: str
+    conflicted: bool
+    conflicts: list[str]
+
+
+class MergeStatus(BaseModel):
+    """The in-progress merge state of a repository."""
+
+    merging: bool
+    conflicts: list[str]
+    message: str
+
+
+class Conflict(BaseModel):
+    """The three merge stages plus the working copy of a conflicted file.
+
+    Any stage that is absent (e.g. a file added on only one side, or deleted on
+    one side) is ``None`` rather than an empty string.
+    """
+
+    file: str
+    base: str | None
+    ours: str | None
+    theirs: str | None
+    merged: str | None
+    binary: bool
+
+
+class ReflogEntry(BaseModel):
+    """A single ``git reflog`` entry used by undo/redo."""
+
+    selector: str
+    subject: str
+
+
+class UndoResult(BaseModel):
+    """The outcome of a reflog-based undo/redo step."""
+
+    ok: bool
+    output: str
+    undone: str
+
+
+class PullRequest(BaseModel):
+    """A GitHub pull request (populated by the ``gh`` integration)."""
+
+    number: int
+    title: str
+    url: str
+    state: str
+    head: str
+    base: str
+
+
 __all__ = [
     "Remote",
     "Upstream",
@@ -131,4 +247,16 @@ __all__ = [
     "BranchList",
     "DiffResult",
     "GraphCommit",
+    "Tag",
+    "Worktree",
+    "Stash",
+    "RefsBundle",
+    "CommitFile",
+    "CommitDetail",
+    "MergeResult",
+    "MergeStatus",
+    "Conflict",
+    "ReflogEntry",
+    "UndoResult",
+    "PullRequest",
 ]
