@@ -591,6 +591,579 @@ Aborting</pre>
           </div>
         </section>
 
+        <!-- ===================================================================
+             SLICE 3 — GitKraken-style 3-pane workspace
+             =================================================================== -->
+
+        <!-- ===== Ref sidebar ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>Ref sidebar</h2>
+          <p class="sg-note">Collapsible <span class="mono">.sidebar__section</span> groups (LOCAL / REMOTE / TAGS / WORKTREES / STASHES). Each <span class="mono">__header</span> has a caret + count; <span class="mono">.is-current</span> rows show a check, and ahead/behind render as <span class="mono">__chip</span>s. Toggle a section with the demo buttons.</p>
+          <div class="panel"><div class="panel__body">
+            <aside class="sidebar" style="max-width:248px; border:1px solid var(--border); border-radius:var(--radius-md)">
+
+              <div class="sidebar__section">
+                <button class="sidebar__header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                  <svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  <span class="sidebar__title">Local</span>
+                  <span class="sidebar__count">3</span>
+                </button>
+                <div class="sidebar__group">
+                  <button class="sidebar__item is-current">
+                    <svg class="sidebar__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+                    <span class="sidebar__name">main</span>
+                    <span class="sidebar__meta">
+                      <span class="sidebar__chip sidebar__chip--ahead" title="2 ahead">↑2</span>
+                      <span class="sidebar__chip sidebar__chip--behind" title="1 behind">↓1</span>
+                    </span>
+                  </button>
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+                    <span class="sidebar__name">feature/graph</span>
+                    <span class="sidebar__meta"><span class="sidebar__chip sidebar__chip--ahead" title="5 ahead">↑5</span></span>
+                  </button>
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+                    <span class="sidebar__name">fix/diff-gutter</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="sidebar__section">
+                <button class="sidebar__header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                  <svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  <span class="sidebar__title">Remote</span>
+                  <span class="sidebar__count">2</span>
+                </button>
+                <div class="sidebar__group">
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>
+                    <span class="sidebar__name">origin/main</span>
+                  </button>
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>
+                    <span class="sidebar__name">origin/feature-x</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="sidebar__section">
+                <button class="sidebar__header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                  <svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  <span class="sidebar__title">Tags</span>
+                  <span class="sidebar__count">2</span>
+                </button>
+                <div class="sidebar__group">
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7V3.5A1.5 1.5 0 0 1 3.5 2H7l6.5 6.5a1.5 1.5 0 0 1 0 2.1L10.6 13.5a1.5 1.5 0 0 1-2.1 0L2 7Z"/><circle cx="5" cy="5" r=".8"/></svg>
+                    <span class="sidebar__name">v0.2.0</span>
+                  </button>
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7V3.5A1.5 1.5 0 0 1 3.5 2H7l6.5 6.5a1.5 1.5 0 0 1 0 2.1L10.6 13.5a1.5 1.5 0 0 1-2.1 0L2 7Z"/><circle cx="5" cy="5" r=".8"/></svg>
+                    <span class="sidebar__name">v0.1.0</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="sidebar__section">
+                <button class="sidebar__header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                  <svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  <span class="sidebar__title">Worktrees</span>
+                  <span class="sidebar__count">1</span>
+                </button>
+                <div class="sidebar__group">
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5z"/></svg>
+                    <span class="sidebar__name">../wt-hotfix</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="sidebar__section is-collapsed">
+                <button class="sidebar__header" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                  <svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  <span class="sidebar__title">Stashes</span>
+                  <span class="sidebar__count">2</span>
+                </button>
+                <div class="sidebar__group">
+                  <button class="sidebar__item">
+                    <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                    <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12"/></svg>
+                    <span class="sidebar__name">WIP on main</span>
+                  </button>
+                </div>
+              </div>
+
+            </aside>
+          </div></div>
+        </section>
+
+        <!-- ===== Toolbar 2 ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>Top action bar (.toolbar2)</h2>
+          <p class="sg-note">Grouped stacked icon+label buttons separated by <span class="mono">__sep</span>, plus repo / branch <span class="mono">__select</span> triggers. <span class="mono">.is-active</span> marks a toggled tool (e.g. Terminal); <span class="mono">[disabled]</span> dims unavailable actions (Redo).</p>
+          <div class="sg-demo-frame">
+            <div class="toolbar2">
+              <button class="toolbar2__select"><span class="mono truncate">webgate</span><svg class="toolbar2__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+              <button class="toolbar2__select"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg><span class="mono truncate">main</span><svg class="toolbar2__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+
+              <span class="toolbar2__sep"></span>
+
+              <div class="toolbar2__group">
+                <button class="toolbar2__btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>
+                  <span class="toolbar2__label">Undo</span>
+                </button>
+                <button class="toolbar2__btn" disabled>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h1"/></svg>
+                  <span class="toolbar2__label">Redo</span>
+                </button>
+              </div>
+
+              <span class="toolbar2__sep"></span>
+
+              <div class="toolbar2__group">
+                <button class="toolbar2__btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                  <span class="toolbar2__label">Pull</span>
+                </button>
+                <button class="toolbar2__btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                  <span class="toolbar2__label">Push</span>
+                </button>
+                <button class="toolbar2__btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                  <span class="toolbar2__label">Branch</span>
+                </button>
+              </div>
+
+              <span class="toolbar2__sep"></span>
+
+              <div class="toolbar2__group">
+                <button class="toolbar2__btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>
+                  <span class="toolbar2__label">Stash</span>
+                </button>
+                <button class="toolbar2__btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V8M6 13l6-6 6 6"/><path d="M5 5h14"/></svg>
+                  <span class="toolbar2__label">Pop</span>
+                </button>
+              </div>
+
+              <span class="toolbar2__spacer"></span>
+
+              <button class="toolbar2__btn is-active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>
+                <span class="toolbar2__label">Terminal</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Context menu ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>Right-click context menu (.ctxmenu)</h2>
+          <p class="sg-note">Reusable menu with <span class="mono">__item</span> rows (icon + label + optional <span class="mono">__shortcut</span>), <span class="mono">__sep</span> dividers, <span class="mono">--danger</span> items, and a nested <span class="mono">__submenu</span> (Reset ▸ Soft/Mixed/Hard). Keyboard-navigable via <span class="mono">.is-active</span> / <span class="mono">:focus-visible</span>. Shown statically (normally <span class="mono">position:absolute</span> at the cursor).</p>
+          <div class="panel"><div class="panel__body" style="min-height:340px">
+            <div class="ctxmenu" style="position:static; display:inline-block; min-width:220px">
+              <button class="ctxmenu__item is-active">
+                <svg class="ctxmenu__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                <span class="ctxmenu__label">Checkout this commit</span>
+              </button>
+              <button class="ctxmenu__item">
+                <svg class="ctxmenu__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                <span class="ctxmenu__label">Merge into current</span>
+              </button>
+              <div class="ctxmenu__sep"></div>
+              <div class="ctxmenu__sub">
+                <button class="ctxmenu__item" aria-haspopup="true">
+                  <svg class="ctxmenu__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                  <span class="ctxmenu__label">Reset to here</span>
+                  <svg class="ctxmenu__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <div class="ctxmenu__submenu ctxmenu is-open">
+                  <button class="ctxmenu__item"><span class="ctxmenu__label">Soft</span><span class="ctxmenu__shortcut">keep all</span></button>
+                  <button class="ctxmenu__item"><span class="ctxmenu__label">Mixed</span><span class="ctxmenu__shortcut">unstage</span></button>
+                  <button class="ctxmenu__item ctxmenu__item--danger"><span class="ctxmenu__label">Hard</span><span class="ctxmenu__shortcut">discard</span></button>
+                </div>
+              </div>
+              <button class="ctxmenu__item">
+                <svg class="ctxmenu__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
+                <span class="ctxmenu__label">Cherry-pick</span>
+              </button>
+              <button class="ctxmenu__item">
+                <svg class="ctxmenu__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg>
+                <span class="ctxmenu__label">Create pull request…</span>
+              </button>
+              <div class="ctxmenu__sep"></div>
+              <button class="ctxmenu__item">
+                <svg class="ctxmenu__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                <span class="ctxmenu__label">Copy SHA</span>
+                <span class="ctxmenu__shortcut">⌘C</span>
+              </button>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Commit detail ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>Commit detail panel</h2>
+          <p class="sg-note">Right-pane content for the selected commit: header (subject / sha / author / date), full message <span class="mono">__body</span>, and a <span class="mono">.file-list</span> of changed files with a status glyph and add/del counts.</p>
+          <div class="panel" style="max-width:420px"><div class="panel__body" style="padding:0">
+            <div class="commit-detail">
+              <div class="commit-detail__header">
+                <div class="commit-detail__subject">graph: assign lanes client-side and draw SVG edges</div>
+                <span class="commit-detail__sha">a1b2c3d</span>
+                <div class="commit-detail__meta">
+                  <div class="commit-detail__row"><span class="commit-detail__label">Author</span><span>Ada Lovelace &lt;ada@example.com&gt;</span></div>
+                  <div class="commit-detail__row"><span class="commit-detail__label">Date</span><span>2026-06-28 14:22</span></div>
+                  <div class="commit-detail__row"><span class="commit-detail__label">Parents</span><span class="mono">b2c3d4e</span></div>
+                </div>
+              </div>
+              <div class="commit-detail__body">Lanes are now computed in the client from the parent topology so the
+renderer can draw nodes and bezier edges without a server round-trip.
+
+Closes #142.</div>
+              <div class="file-list">
+                <div class="file-list__row is-selected">
+                  <span class="file-list__status file-list__status--mod" title="Modified">M</span>
+                  <span class="file-list__path"><span class="dir">web/static/js/</span>graph.js</span>
+                  <span class="file-list__counts"><span class="file-list__add">+128</span><span class="file-list__del">−24</span></span>
+                </div>
+                <div class="file-list__row">
+                  <span class="file-list__status file-list__status--add" title="Added">A</span>
+                  <span class="file-list__path"><span class="dir">web/static/css/</span>graph.css</span>
+                  <span class="file-list__counts"><span class="file-list__add">+64</span><span class="file-list__del">−0</span></span>
+                </div>
+                <div class="file-list__row">
+                  <span class="file-list__status file-list__status--del" title="Deleted">D</span>
+                  <span class="file-list__path"><span class="dir">core/</span>lanes_legacy.py</span>
+                  <span class="file-list__counts"><span class="file-list__add">+0</span><span class="file-list__del">−51</span></span>
+                </div>
+                <div class="file-list__row">
+                  <span class="file-list__status file-list__status--ren" title="Renamed">R</span>
+                  <span class="file-list__path"><span class="dir">docs/</span>graph.md</span>
+                  <span class="file-list__counts"><span class="file-list__add">+3</span><span class="file-list__del">−3</span></span>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Merge editor ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>3-way merge editor (.merge-editor)</h2>
+          <p class="sg-note">Three monospaced panes — <span class="mono">__pane--ours</span> / <span class="mono">--result</span> / <span class="mono">--theirs</span>. Each side header carries an <span class="mono">__accept</span> control (<span class="mono">--ours</span> / <span class="mono">--theirs</span> / <span class="mono">--both</span>); conflict hunks get a <span class="mono">__hunk-head</span>, and lines tint via <span class="mono">__line--add</span> / <span class="mono">--del</span> / <span class="mono">--ctx</span>.</p>
+          <div class="merge-editor" style="max-height:360px">
+            <div class="merge-editor__head">
+              <span>Resolving</span><span class="mono">core/git/graph.py</span>
+              <span class="badge badge--danger">1 conflict</span>
+              <span class="merge-editor__actions">
+                <button class="btn btn--ghost btn--sm">Abort merge</button>
+                <button class="btn btn--primary btn--sm" disabled>Continue</button>
+              </span>
+            </div>
+            <div class="merge-editor__panes">
+
+              <div class="merge-editor__pane merge-editor__pane--ours">
+                <div class="merge-editor__pane-head">
+                  <span>Ours · main</span>
+                  <button class="merge-editor__accept merge-editor__accept--ours">Use ours</button>
+                </div>
+                <div class="merge-editor__hunk-head">Conflict 1 of 1</div>
+                <div class="merge-editor__line merge-editor__line--ctx"><span class="merge-editor__ln">40</span><span class="merge-editor__code">def assign_lanes(commits):</span></div>
+                <div class="merge-editor__line merge-editor__line--add"><span class="merge-editor__ln">41</span><span class="merge-editor__code">    lanes = greedy_pack(commits)</span></div>
+                <div class="merge-editor__line merge-editor__line--add"><span class="merge-editor__ln">42</span><span class="merge-editor__code">    return lanes</span></div>
+              </div>
+
+              <div class="merge-editor__pane merge-editor__pane--result">
+                <div class="merge-editor__pane-head">
+                  <span>Result</span>
+                  <button class="merge-editor__accept merge-editor__accept--both">Accept both</button>
+                </div>
+                <div class="merge-editor__hunk-head">Pick a side to resolve</div>
+                <div class="merge-editor__line merge-editor__line--ctx"><span class="merge-editor__ln">40</span><span class="merge-editor__code">def assign_lanes(commits):</span></div>
+                <div class="merge-editor__line merge-editor__line--ctx"><span class="merge-editor__ln">41</span><span class="merge-editor__code">    &lt;&lt;&lt; unresolved &gt;&gt;&gt;</span></div>
+                <div class="merge-editor__line merge-editor__line--ctx"><span class="merge-editor__ln">42</span><span class="merge-editor__code">    return lanes</span></div>
+              </div>
+
+              <div class="merge-editor__pane merge-editor__pane--theirs">
+                <div class="merge-editor__pane-head">
+                  <span>Theirs · feature/graph</span>
+                  <button class="merge-editor__accept merge-editor__accept--theirs">Use theirs</button>
+                </div>
+                <div class="merge-editor__hunk-head">Conflict 1 of 1</div>
+                <div class="merge-editor__line merge-editor__line--ctx"><span class="merge-editor__ln">40</span><span class="merge-editor__code">def assign_lanes(commits):</span></div>
+                <div class="merge-editor__line merge-editor__line--del"><span class="merge-editor__ln">41</span><span class="merge-editor__code">    lanes = topo_pack(commits, width=6)</span></div>
+                <div class="merge-editor__line merge-editor__line--del"><span class="merge-editor__ln">42</span><span class="merge-editor__code">    return compress(lanes)</span></div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Stash list ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>Stash list (.stash-list)</h2>
+          <p class="sg-note">Saved stashes with a <span class="mono">__index</span> chip, message, timestamp, and hover-revealed Pop / Apply / Drop actions.</p>
+          <div class="panel"><div class="panel__body" style="padding:var(--space-2)">
+            <div class="stash-list">
+              <div class="stash-list__row">
+                <span class="stash-list__index">stash@{0}</span>
+                <span class="stash-list__msg">WIP on main: graph lane packing</span>
+                <span class="stash-list__meta">2h ago</span>
+                <div class="stash-list__actions">
+                  <button class="btn btn--secondary btn--sm">Pop</button>
+                  <button class="btn btn--ghost btn--sm">Apply</button>
+                  <button class="btn btn--danger btn--sm">Drop</button>
+                </div>
+              </div>
+              <div class="stash-list__row">
+                <span class="stash-list__index">stash@{1}</span>
+                <span class="stash-list__msg">On feature/graph: experiment with bezier edges</span>
+                <span class="stash-list__meta">yesterday</span>
+                <div class="stash-list__actions">
+                  <button class="btn btn--secondary btn--sm">Pop</button>
+                  <button class="btn btn--ghost btn--sm">Apply</button>
+                  <button class="btn btn--danger btn--sm">Drop</button>
+                </div>
+              </div>
+            </div>
+          </div></div>
+        </section>
+
+        <!-- ===== Terminal pane ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>Terminal pane (.terminal-pane)</h2>
+          <p class="sg-note">Collapsible host for xterm.js. The <span class="mono">__head</span> toggles <span class="mono">.is-collapsed</span> (rotates the caret, hides <span class="mono">__body</span>); the body is where the terminal renderer mounts. Click the header to collapse.</p>
+          <div class="sg-demo-frame">
+            <div class="terminal-pane" style="height:200px">
+              <div class="terminal-pane__head" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                <svg class="terminal-pane__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                <span class="terminal-pane__title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></svg>
+                  Terminal — webgate
+                </span>
+                <div class="terminal-pane__actions">
+                  <button class="btn btn--icon btn--sm" aria-label="Clear" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+                </div>
+              </div>
+              <pre class="terminal-pane__body"><span class="out-dim">khd@dev</span>:<span style="color:var(--accent)">~/webgate</span>$ git status
+On branch <span style="color:var(--success)">main</span>
+Your branch is ahead of 'origin/main' by 2 commits.
+
+nothing to commit, working tree clean
+<span class="out-dim">khd@dev</span>:<span style="color:var(--accent)">~/webgate</span>$ <span style="opacity:.6">█</span></pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== Graph label chips ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 3 · Workspace</span>
+          <h2>Graph BRANCH/TAG label chips</h2>
+          <p class="sg-note">The BRANCH/TAG column to the left of the graph. <span class="mono">.graph__label</span> chips with <span class="mono">--head</span> / <span class="mono">--branch</span> / <span class="mono">--remote</span> / <span class="mono">--tag</span> variants, grouped in a <span class="mono">.graph__labels</span> container.</p>
+          <div class="panel"><div class="panel__body sg-row">
+            <span class="graph__labels">
+              <span class="graph__label graph__label--head">HEAD → main</span>
+            </span>
+            <span class="graph__labels">
+              <span class="graph__label graph__label--branch">feature/graph</span>
+            </span>
+            <span class="graph__labels">
+              <span class="graph__label graph__label--remote">origin/main</span>
+            </span>
+            <span class="graph__labels">
+              <span class="graph__label graph__label--tag">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7V3.5A1.5 1.5 0 0 1 3.5 2H7l6.5 6.5a1.5 1.5 0 0 1 0 2.1L10.6 13.5a1.5 1.5 0 0 1-2.1 0L2 7Z"/></svg>
+                v0.2.0
+              </span>
+            </span>
+          </div></div>
+        </section>
+
+        <!-- ===== FULL 3-PANE WORKSPACE MOCK ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Screen mockup</span>
+          <h2>GitKraken-style 3-pane workspace</h2>
+          <p class="sg-note">The whole <span class="mono">.layout-3pane</span> assembled: <span class="mono">.toolbar2</span> across the top, <span class="mono">.sidebar</span> | graph center | <span class="mono">.commit-detail</span> in the middle band, and a collapsible <span class="mono">.terminal-pane</span> spanning the bottom. This is the real markup the frontend agent should build.</p>
+          <div class="sg-demo-frame" style="height:600px">
+            <div class="layout-3pane">
+
+              <div class="toolbar2">
+                <button class="toolbar2__select"><span class="mono truncate">webgate</span><svg class="toolbar2__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                <button class="toolbar2__select"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg><span class="mono truncate">main</span><svg class="toolbar2__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                <span class="toolbar2__sep"></span>
+                <div class="toolbar2__group">
+                  <button class="toolbar2__btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg><span class="toolbar2__label">Undo</span></button>
+                  <button class="toolbar2__btn" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h1"/></svg><span class="toolbar2__label">Redo</span></button>
+                </div>
+                <span class="toolbar2__sep"></span>
+                <div class="toolbar2__group">
+                  <button class="toolbar2__btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg><span class="toolbar2__label">Pull</span></button>
+                  <button class="toolbar2__btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg><span class="toolbar2__label">Push</span></button>
+                  <button class="toolbar2__btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span class="toolbar2__label">Branch</span></button>
+                </div>
+                <span class="toolbar2__sep"></span>
+                <div class="toolbar2__group">
+                  <button class="toolbar2__btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg><span class="toolbar2__label">Stash</span></button>
+                  <button class="toolbar2__btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V8M6 13l6-6 6 6"/><path d="M5 5h14"/></svg><span class="toolbar2__label">Pop</span></button>
+                </div>
+                <span class="toolbar2__spacer"></span>
+                <button class="toolbar2__btn is-active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg><span class="toolbar2__label">Terminal</span></button>
+              </div>
+
+              <aside class="sidebar">
+                <div class="sidebar__section">
+                  <button class="sidebar__header"><svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span class="sidebar__title">Local</span><span class="sidebar__count">2</span></button>
+                  <div class="sidebar__group">
+                    <button class="sidebar__item is-current">
+                      <svg class="sidebar__check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3.5 3.5L13 5"/></svg>
+                      <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+                      <span class="sidebar__name">main</span>
+                      <span class="sidebar__meta"><span class="sidebar__chip sidebar__chip--ahead">↑2</span></span>
+                    </button>
+                    <button class="sidebar__item">
+                      <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                      <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+                      <span class="sidebar__name">feature/graph</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="sidebar__section">
+                  <button class="sidebar__header"><svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span class="sidebar__title">Remote</span><span class="sidebar__count">1</span></button>
+                  <div class="sidebar__group">
+                    <button class="sidebar__item">
+                      <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                      <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>
+                      <span class="sidebar__name">origin/main</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="sidebar__section">
+                  <button class="sidebar__header"><svg class="sidebar__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><span class="sidebar__title">Tags</span><span class="sidebar__count">1</span></button>
+                  <div class="sidebar__group">
+                    <button class="sidebar__item">
+                      <svg class="sidebar__check" viewBox="0 0 16 16"></svg>
+                      <svg class="sidebar__icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7V3.5A1.5 1.5 0 0 1 3.5 2H7l6.5 6.5a1.5 1.5 0 0 1 0 2.1L10.6 13.5a1.5 1.5 0 0 1-2.1 0L2 7Z"/><circle cx="5" cy="5" r=".8"/></svg>
+                      <span class="sidebar__name">v0.2.0</span>
+                    </button>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="layout-3pane__center">
+                <div class="graph" role="tree" aria-label="Commit graph">
+                  <div class="graph__row is-selected" role="treeitem">
+                    <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                      <path class="graph__edge graph__lane-1" d="M9 19 L9 38"/>
+                      <path class="graph__edge graph__lane-2" d="M9 19 C9 30 27 26 27 38"/>
+                      <circle class="graph__node graph__lane-1 is-head" cx="9" cy="19" r="4.5"/>
+                    </svg>
+                    <span class="graph__labels"><span class="graph__label graph__label--head">HEAD → main</span></span>
+                    <div class="graph__content">
+                      <span class="graph__sha">a1b2c3d</span>
+                      <span class="graph__subject">Merge branch 'feature/graph' into main</span>
+                      <span class="graph__meta">Ada · 2h</span>
+                    </div>
+                  </div>
+                  <div class="graph__row" role="treeitem">
+                    <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                      <path class="graph__edge graph__lane-1" d="M9 0 L9 38"/>
+                      <path class="graph__edge graph__lane-2" d="M27 0 L27 38"/>
+                      <circle class="graph__node graph__lane-2" cx="27" cy="19" r="4.5"/>
+                    </svg>
+                    <span class="graph__labels"><span class="graph__label graph__label--branch">feature/graph</span></span>
+                    <div class="graph__content">
+                      <span class="graph__sha">b2c3d4e</span>
+                      <span class="graph__subject">graph: assign lanes client-side</span>
+                      <span class="graph__meta">Ada · 3h</span>
+                    </div>
+                  </div>
+                  <div class="graph__row" role="treeitem">
+                    <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                      <path class="graph__edge graph__lane-1" d="M9 0 L9 38"/>
+                      <circle class="graph__node graph__lane-1" cx="9" cy="19" r="4.5"/>
+                    </svg>
+                    <span class="graph__labels"><span class="graph__label graph__label--remote">origin/main</span></span>
+                    <div class="graph__content">
+                      <span class="graph__sha">d4e5f6a</span>
+                      <span class="graph__subject">tokens: add lane palette</span>
+                      <span class="graph__meta">Linus · 1d</span>
+                    </div>
+                  </div>
+                  <div class="graph__row" role="treeitem">
+                    <svg class="graph__lanes" width="36" height="38" viewBox="0 0 36 38" aria-hidden="true">
+                      <path class="graph__edge graph__lane-1" d="M9 0 L9 38"/>
+                      <circle class="graph__node graph__lane-1" cx="9" cy="19" r="4.5"/>
+                    </svg>
+                    <span class="graph__labels"><span class="graph__label graph__label--tag">v0.2.0</span></span>
+                    <div class="graph__content">
+                      <span class="graph__sha">e5f6a7b</span>
+                      <span class="graph__subject">panels: changes + diff scaffolding</span>
+                      <span class="graph__meta">Linus · 1d</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="layout-3pane__detail">
+                <div class="commit-detail">
+                  <div class="commit-detail__header">
+                    <div class="commit-detail__subject">Merge branch 'feature/graph' into main</div>
+                    <span class="commit-detail__sha">a1b2c3d</span>
+                    <div class="commit-detail__meta">
+                      <div class="commit-detail__row"><span class="commit-detail__label">Author</span><span>Ada Lovelace</span></div>
+                      <div class="commit-detail__row"><span class="commit-detail__label">Date</span><span>2026-06-29 09:14</span></div>
+                    </div>
+                  </div>
+                  <div class="file-list">
+                    <div class="file-list__row is-selected">
+                      <span class="file-list__status file-list__status--mod">M</span>
+                      <span class="file-list__path"><span class="dir">web/static/js/</span>graph.js</span>
+                      <span class="file-list__counts"><span class="file-list__add">+128</span><span class="file-list__del">−24</span></span>
+                    </div>
+                    <div class="file-list__row">
+                      <span class="file-list__status file-list__status--add">A</span>
+                      <span class="file-list__path"><span class="dir">web/static/css/</span>graph.css</span>
+                      <span class="file-list__counts"><span class="file-list__add">+64</span><span class="file-list__del">−0</span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="terminal-pane">
+                <div class="terminal-pane__head" onclick="this.parentElement.classList.toggle('is-collapsed')">
+                  <svg class="terminal-pane__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  <span class="terminal-pane__title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"/></svg>
+                    Terminal — webgate
+                  </span>
+                </div>
+                <pre class="terminal-pane__body"><span class="out-dim">khd@dev</span>:<span style="color:var(--accent)">~/webgate</span>$ git log --oneline -1
+<span style="color:var(--warning)">a1b2c3d</span> Merge branch 'feature/graph' into main
+<span class="out-dim">khd@dev</span>:<span style="color:var(--accent)">~/webgate</span>$ <span style="opacity:.6">█</span></pre>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
         <!-- ===== MOCKED REPO VIEW ===== -->
         <section class="sg-section">
           <span class="eyebrow">Screen mockup</span>
@@ -724,7 +1297,22 @@ From github.com:you/webgate
             <div><code>.graph</code> __row(.is-selected) __lanes __content</div>
             <div><code>.graph__node</code> .is-head · <code>.graph__edge</code> · <code>.graph__lane-1…6</code></div>
             <div><code>.graph__ref--</code> head branch remote tag</div>
-            <div><code>.text-muted</code> <code>.text-secondary</code> <code>.mono</code> <code>.truncate</code> <code>.sr-only</code></div>
+            <div><code>.graph__labels</code> · <code>.graph__label--</code> head branch remote tag</div>
+            <div><code>.layout-3pane</code> __center __detail .is-terminal-collapsed</div>
+            <div><code>.sidebar</code> __section(.is-collapsed) __header __caret</div>
+            <div><code>.sidebar__</code> title count group item(.is-current)</div>
+            <div><code>.sidebar__</code> icon check name meta chip(--ahead --behind)</div>
+            <div><code>.toolbar2</code> __group __sep __spacer __select</div>
+            <div><code>.toolbar2__btn</code>(.is-active) __label</div>
+            <div><code>.ctxmenu</code> __item(--danger .is-active) __sep</div>
+            <div><code>.ctxmenu__</code> icon label shortcut arrow sub submenu</div>
+            <div><code>.commit-detail</code> __header __subject __sha __meta __row __label __body</div>
+            <div><code>.file-list</code> __row __status(--add…) __path __counts __add __del</div>
+            <div><code>.merge-editor</code> __head __panes __pane(--ours --theirs --result)</div>
+            <div><code>.merge-editor__</code> pane-head accept(--ours --theirs --both)</div>
+            <div><code>.merge-editor__</code> hunk-head line(--add --del --ctx) ln code</div>
+            <div><code>.stash-list</code> __row __index __msg __meta __actions</div>
+            <div><code>.terminal-pane</code>(.is-collapsed) __head __caret __title __actions __body</div>
           </div></div>
         </section>
 

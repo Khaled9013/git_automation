@@ -116,6 +116,8 @@
   --shadow-md:  0 6px 18px rgba(0, 0, 0, 0.42);
   --shadow-lg:  0 18px 48px rgba(0, 0, 0, 0.55);
   --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.50);
+  /* Right-click context menu — sits highest, so it casts the deepest shadow */
+  --shadow-ctxmenu: 0 16px 40px rgba(0, 0, 0, 0.62);
   /* Inset highlight that gives controls a faint top edge of light */
   --shadow-edge: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --focus-ring: 0 0 0 3px var(--accent-ring);
@@ -159,4 +161,11 @@
   /* ---- Layout constants ----------------------------------------------- */
   --topbar-height: 56px;
   --content-max:   980px;
+
+  /* GitKraken-style 3-pane workspace (slice 3). Sidebar + detail are the
+     fixed side columns; the graph/center pane is the flexible middle.        */
+  --sidebar-width:   248px;  /* ref tree column (LOCAL/REMOTE/TAGS/…)         */
+  --detail-width:    360px;  /* commit-detail / right pane column             */
+  --toolbar2-height:  52px;  /* top action bar (Undo/Pull/Push/Stash/…)       */
+  --terminal-height: 220px;  /* embedded terminal pane when expanded          */
 }
