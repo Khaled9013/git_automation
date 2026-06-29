@@ -192,3 +192,112 @@ export function setFieldError(field, hasError) {
   if (!field) return;
   field.classList.toggle('has-error', !!hasError);
 }
+
+// ---- Confirm dialog (destructive actions) -----------------------------------
+
+/**
+ * Show a modal confirm dialog and resolve to true (confirm) / false (cancel).
+ * Reuses the `.modal-overlay` / `.modal` components and the shared focus trap.
+ * @param {{title:string, message?:string, confirmLabel?:string, danger?:boolean}} opts
+ * @returns {Promise<boolean>}
+ */
+export function confirmDialog({ title, message = '', confirmLabel = 'Confirm', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const confirmBtn = el('button', {
+      class: `btn ${danger ? 'btn--danger' : 'btn--primary'}`,
+      text: confirmLabel,
+    });
+    const cancelBtn = el('button', { class: 'btn btn--ghost', text: 'Cancel' });
+
+    const dialog = el('div', {
+      class: 'modal',
+      attrs: { role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'confirm-title' },
+    }, [
+      el('div', { class: 'modal__header' }, [
+        el('h2', { class: 'modal__title', text: title, attrs: { id: 'confirm-title' } }),
+        message ? el('p', { class: 'modal__subtitle', text: message }) : null,
+      ]),
+      el('div', { class: 'modal__footer' }, [cancelBtn, confirmBtn]),
+    ]);
+
+    const overlay = el('div', { class: 'modal-overlay', attrs: { role: 'presentation' } }, [dialog]);
+    document.body.appendChild(overlay);
+
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      close();
+      overlay.remove();
+      resolve(value);
+    };
+
+    const close = openModal(overlay, { onClose: () => finish(false) });
+
+    confirmBtn.addEventListener('click', () => finish(true));
+    cancelBtn.addEventListener('click', () => finish(false));
+    overlay.addEventListener('mousedown', (e) => {
+      if (e.target === overlay) finish(false);
+    });
+  });
+}
+
+/**
+ * Show a modal text-prompt and resolve to the trimmed value, or null on cancel.
+ * @param {{title:string, label?:string, placeholder?:string, confirmLabel?:string}} opts
+ * @returns {Promise<string|null>}
+ */
+export function promptDialog({ title, label = '', placeholder = '', confirmLabel = 'OK' } = {}) {
+  return new Promise((resolve) => {
+    const input = el('input', {
+      class: 'input',
+      attrs: { type: 'text', placeholder, autocomplete: 'off', spellcheck: 'false', 'aria-label': label || title },
+    });
+    const field = el('div', { class: 'field' }, [
+      label ? el('label', { class: 'field__label', text: label }) : null,
+      input,
+    ]);
+
+    const confirmBtn = el('button', { class: 'btn btn--primary', text: confirmLabel });
+    const cancelBtn = el('button', { class: 'btn btn--ghost', text: 'Cancel' });
+
+    const dialog = el('div', {
+      class: 'modal',
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'prompt-title' },
+    }, [
+      el('div', { class: 'modal__header' }, [
+        el('h2', { class: 'modal__title', text: title, attrs: { id: 'prompt-title' } }),
+      ]),
+      el('div', { class: 'modal__body' }, [field]),
+      el('div', { class: 'modal__footer' }, [cancelBtn, confirmBtn]),
+    ]);
+    const overlay = el('div', { class: 'modal-overlay', attrs: { role: 'presentation' } }, [dialog]);
+    document.body.appendChild(overlay);
+
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      close();
+      overlay.remove();
+      resolve(value);
+    };
+    const submit = () => {
+      const v = input.value.trim();
+      finish(v ? v : null);
+    };
+
+    const close = openModal(overlay, { onClose: () => finish(null) });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      }
+    });
+    confirmBtn.addEventListener('click', submit);
+    cancelBtn.addEventListener('click', () => finish(null));
+    overlay.addEventListener('mousedown', (e) => {
+      if (e.target === overlay) finish(null);
+    });
+  });
+}

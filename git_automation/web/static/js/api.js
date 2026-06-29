@@ -114,3 +114,82 @@ export function gitPull(path, remote, branch = null) {
 export function gitPush(path, remote, branch = null, setUpstream = false) {
   return postJson('/api/git/push', { path, remote, branch, set_upstream: setUpstream });
 }
+
+// ---- Filesystem browser -----------------------------------------------------
+
+/** GET /api/fs/home → { path } */
+export function fsHome() {
+  return request('/api/fs/home');
+}
+
+/** GET /api/fs/list?path= → { path, parent, entries:[{name,path,is_dir,is_git_repo}] } */
+export function fsList(path) {
+  return request(`/api/fs/list?path=${encodeURIComponent(path)}`);
+}
+
+// ---- Working tree: changes / stage / commit / diff --------------------------
+
+/** GET /api/repo/changes?path= → { staged, unstaged, untracked } */
+export function getChanges(path) {
+  return request(`/api/repo/changes?path=${encodeURIComponent(path)}`);
+}
+
+/** POST /api/git/stage */
+export function stage(path, files) {
+  return postJson('/api/git/stage', { path, files });
+}
+
+/** POST /api/git/unstage */
+export function unstage(path, files) {
+  return postJson('/api/git/unstage', { path, files });
+}
+
+/** POST /api/git/discard (destructive — confirm in UI first) */
+export function discard(path, files) {
+  return postJson('/api/git/discard', { path, files });
+}
+
+/** POST /api/git/commit */
+export function commit(path, message) {
+  return postJson('/api/git/commit', { path, message });
+}
+
+/** GET /api/repo/diff?path=&file=&staged= → { file, diff, binary } */
+export function getDiff(path, file, staged = false) {
+  const q = `path=${encodeURIComponent(path)}&file=${encodeURIComponent(file)}&staged=${staged ? 'true' : 'false'}`;
+  return request(`/api/repo/diff?${q}`);
+}
+
+// ---- Branches ---------------------------------------------------------------
+
+/** GET /api/repo/branches?path= → { current, local, remote } */
+export function getBranches(path) {
+  return request(`/api/repo/branches?path=${encodeURIComponent(path)}`);
+}
+
+/** POST /api/git/branch/create */
+export function branchCreate(path, name, checkout = false) {
+  return postJson('/api/git/branch/create', { path, name, checkout });
+}
+
+/** POST /api/git/branch/checkout */
+export function branchCheckout(path, name) {
+  return postJson('/api/git/branch/checkout', { path, name });
+}
+
+/** POST /api/git/branch/delete (destructive — confirm in UI first) */
+export function branchDelete(path, name, force = false) {
+  return postJson('/api/git/branch/delete', { path, name, force });
+}
+
+/** POST /api/git/branch/merge (destructive — confirm in UI first) */
+export function branchMerge(path, name) {
+  return postJson('/api/git/branch/merge', { path, name });
+}
+
+// ---- Commit graph -----------------------------------------------------------
+
+/** GET /api/repo/graph?path=&limit= → { commits:[...] } */
+export function getGraph(path, limit = 200) {
+  return request(`/api/repo/graph?path=${encodeURIComponent(path)}&limit=${encodeURIComponent(limit)}`);
+}

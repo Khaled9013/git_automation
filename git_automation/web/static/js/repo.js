@@ -6,7 +6,7 @@ import { renderConsole, setLoading, toast } from './ui.js';
 
 const STORAGE_KEY = 'git-automation:last-path';
 
-export function initRepo() {
+export function initRepo({ onRepoLoaded } = {}) {
   const form = document.getElementById('open-form');
   const pathInput = document.getElementById('repo-path');
   const btnOpen = document.getElementById('btn-open');
@@ -132,6 +132,7 @@ export function initRepo() {
       consoleSlot.replaceChildren();
       repoPanel.hidden = false;
       btnRefresh.disabled = false;
+      if (onRepoLoaded) onRepoLoaded(status);
       toast('success', 'Repository opened', basename(currentPath));
     } catch (err) {
       status = null;
@@ -188,7 +189,7 @@ export function initRepo() {
     }
   }
 
-  async function refreshStatusQuietly() {
+  async function refreshStatusQuietly({ reloadPanels = false } = {}) {
     if (!currentPath) return;
     try {
       status = await api.getRepo(currentPath);
@@ -197,6 +198,7 @@ export function initRepo() {
       const chosen = remoteSelect.value;
       populateRemotes();
       if (chosen && status.remotes.some((r) => r.name === chosen)) remoteSelect.value = chosen;
+      if (reloadPanels && onRepoLoaded) onRepoLoaded(status);
     } catch {
       // Non-fatal: leave the last-known status in place.
     }
@@ -226,6 +228,22 @@ export function initRepo() {
     loadRemembered() {
       const remembered2 = localStorage.getItem(STORAGE_KEY);
       if (remembered2) load(remembered2);
+    },
+    /** Open a repository by absolute path (e.g. from the folder browser). */
+    open(path) {
+      return load(path);
+    },
+    /** Re-fetch status, re-render badges, and reload the attached panels. */
+    refreshAll() {
+      return refreshStatusQuietly({ reloadPanels: true });
+    },
+    /** Re-fetch status and re-render badges only (no panel reload). */
+    refreshStatus() {
+      return refreshStatusQuietly({ reloadPanels: false });
+    },
+    /** The currently-open repository path, or null. */
+    currentPath() {
+      return currentPath;
     },
   };
 }
