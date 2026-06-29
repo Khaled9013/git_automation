@@ -320,9 +320,13 @@ async def get_diff(path: str, file: str, staged: bool = False) -> DiffResult:
     result = await run_git(args, cwd=cwd)
     diff = result.output
     if not diff and not staged:
-        # Untracked file: render its full content as an added-file diff.
-        no_index = await run_git(["diff", "--no-index", "--", "/dev/null", file], cwd=cwd)
-        diff = no_index.output
+        # An empty tracked diff means either an untracked file or a tracked file
+        # with no changes. Only render full content (as an added-file diff) when
+        # the file is genuinely untracked; a clean tracked file has no diff.
+        tracked = await run_git(["ls-files", "--error-unmatch", "--", file], cwd=cwd)
+        if not tracked.ok:
+            no_index = await run_git(["diff", "--no-index", "--", "/dev/null", file], cwd=cwd)
+            diff = no_index.output
     return DiffResult(file=file, diff=diff, binary=_is_binary_diff(diff))
 
 
@@ -427,12 +431,16 @@ async def merge_branch(path: str, name: str) -> CommandResult:
 def _parse_graph_line(line: str) -> GraphCommit | None:
     """Parse one delimited ``git log`` line into a :class:`GraphCommit`.
 
-    The trailing (refs) field is empty for unreferenced commits; because
+    The subject (``%s``) is the only free-text field, so it is placed last and
+    captured with a bounded split (``maxsplit=6``): an embedded ``_SEP`` in the
+    subject then stays within the subject instead of shifting later fields.
+
+    The trailing field can be empty (e.g. an empty subject); because
     ``CommandResult.output`` is whitespace-stripped and ``_SEP`` counts as
     whitespace, that empty field can vanish, so missing fields are padded.
     """
-    fields = (line.split(_SEP) + [""] * 7)[:7]
-    sha, short, parents, author, date, subject, refs = fields
+    fields = (line.split(_SEP, 6) + [""] * 7)[:7]
+    sha, short, parents, author, date, refs, subject = fields
     if not sha:
         return None
     ref_list = [ref.strip() for ref in refs.split(",") if ref.strip()]
@@ -463,7 +471,7 @@ async def get_graph(path: str, limit: int = 200) -> list[GraphCommit]:
         A list of :class:`GraphCommit`, newest-first; empty for an unborn repo.
     """
     cwd = validate_repo_path(path)
-    fmt = _SEP.join(["%H", "%h", "%P", "%an", "%aI", "%s", "%D"])
+    fmt = _SEP.join(["%H", "%h", "%P", "%an", "%aI", "%D", "%s"])
     result = await run_git(
         [
             "log",
