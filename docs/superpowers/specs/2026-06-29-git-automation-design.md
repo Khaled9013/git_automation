@@ -136,8 +136,8 @@ that removes the need to manually check github.com.
 
 ### 5.3 Notifications (the core pain-killer)
 
-A poller (configurable interval) diffs current GitHub state against last-seen
-state and raises **desktop + in-app notifications** when:
+A poller diffs current GitHub state against last-seen state and raises
+**desktop + in-app notifications** when:
 
 - a **task is assigned to me**,
 - I am **@mentioned anywhere** (issue, PR, comment),
@@ -147,6 +147,14 @@ state and raises **desktop + in-app notifications** when:
 
 Desktop notifications are OS-native (via the pywebview shell + system tray);
 the web UI shows the same events in an in-app feed/badge.
+
+**Polling cadence — as real-time as GitHub allows:** use GitHub's notifications
+API with **conditional requests** (ETag / `Last-Modified`) and honor the
+`X-Poll-Interval` header GitHub returns (typically ~60s). This gives
+near-real-time updates while staying cheap and within rate limits. If that path
+is unavailable (e.g. a query that doesn't expose `X-Poll-Interval`), **fall back
+to a fixed 5-minute poll**. The interval remains configurable, but never polls
+faster than GitHub's advertised minimum.
 
 ### 5.4 Delivery
 
@@ -218,8 +226,6 @@ implementation plan.
 
 ## 9. Open Questions (to resolve before/within each phase)
 
-- Phase 1: exact poll interval default and whether to support GitHub's
-  notifications API vs. composing from issues/PRs/mentions queries.
 - Phase 1: how much of the git history *graph* to render in v1 vs. a simpler
   linear log first.
 - Phase 2: JSON vs. SQLite for the skill tree, and whether the tree is editable
