@@ -1257,6 +1257,90 @@ From github.com:you/webgate
           </div>
         </section>
 
+        <!-- ===== Slice 4 additions ===== -->
+        <section class="sg-section">
+          <span class="eyebrow">Slice 4</span>
+          <h2>Hunk staging, split diff, filter, drift &amp; shortcuts</h2>
+          <p class="sg-note">Additive components for auto-refresh / hunk staging / commit-diff polish: per-hunk stage controls in <span class="mono">.diff</span>, a side-by-side <span class="mono">.diff--split</span> variant, a graph <span class="mono">.filter</span>, a <span class="mono">.drift</span> ahead/behind badge, and a <span class="mono">.shortcuts</span> help overlay.</p>
+
+          <div class="stack stack--loose">
+
+            <!-- Diff with per-hunk stage / unstage controls -->
+            <div class="stack stack--tight">
+              <span class="eyebrow">Inline diff with hunk controls</span>
+              <p class="sg-note">Hover or focus a <span class="mono">.diff__hunk-head</span> to reveal its <span class="mono">.diff__stage</span> / <span class="mono">.diff__unstage</span> buttons.</p>
+              <div class="diff" role="table" aria-label="Diff with hunk staging">
+                <div class="diff__hunk-head">
+                  <span class="diff__code">@@ -78,6 +78,13 @@ :root {</span>
+                  <button class="diff__stage" type="button">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                    Stage hunk
+                  </button>
+                  <button class="diff__unstage" type="button">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
+                    Unstage
+                  </button>
+                </div>
+                <div class="diff__line"><span class="diff__ln">78</span><span class="diff__ln">78</span><span class="diff__code">  --danger-border:  rgba(242, 101, 113, 0.34);</span></div>
+                <div class="diff__line diff__line--add"><span class="diff__ln"></span><span class="diff__ln">79</span><span class="diff__code">+  --lane-1: #6E8AFF;  /* iris indigo */</span></div>
+                <div class="diff__line diff__line--add"><span class="diff__ln"></span><span class="diff__ln">80</span><span class="diff__code">+  --lane-2: #3FBF8F;  /* teal-green  */</span></div>
+                <div class="diff__line diff__line--del"><span class="diff__ln">79</span><span class="diff__ln"></span><span class="diff__code">-  /* TODO: pick branch colors */</span></div>
+                <div class="diff__line"><span class="diff__ln">80</span><span class="diff__ln">81</span><span class="diff__code">  /* ---- Spacing scale (4px base) ---- */</span></div>
+              </div>
+            </div>
+
+            <!-- Side-by-side (split) diff -->
+            <div class="stack stack--tight">
+              <span class="eyebrow">Side-by-side diff (.diff--split)</span>
+              <p class="sg-note">Old | new column pairs; the same <span class="mono">--add</span> / <span class="mono">--del</span> / <span class="mono">--meta</span> row tints apply.</p>
+              <div class="diff diff--split" role="table" aria-label="Side-by-side diff">
+                <div class="diff__hunk-head"><span class="diff__code">@@ -78,4 +78,5 @@ :root {</span></div>
+                <div class="diff__line"><span class="diff__ln">78</span><span class="diff__code">  --danger-border: …</span><span class="diff__ln">78</span><span class="diff__code">  --danger-border: …</span></div>
+                <div class="diff__line diff__line--del"><span class="diff__ln">79</span><span class="diff__code">  /* TODO: pick colors */</span><span class="diff__ln"></span><span class="diff__code"></span></div>
+                <div class="diff__line diff__line--add"><span class="diff__ln"></span><span class="diff__code"></span><span class="diff__ln">79</span><span class="diff__code">  --lane-1: #6E8AFF;</span></div>
+                <div class="diff__line diff__line--add"><span class="diff__ln"></span><span class="diff__code"></span><span class="diff__ln">80</span><span class="diff__code">  --lane-2: #3FBF8F;</span></div>
+                <div class="diff__line"><span class="diff__ln">80</span><span class="diff__code">  /* Spacing scale */</span><span class="diff__ln">81</span><span class="diff__code">  /* Spacing scale */</span></div>
+              </div>
+            </div>
+
+            <!-- Graph filter + drift badges -->
+            <div class="sg-row" style="align-items: stretch;">
+              <div class="stack stack--tight" style="flex: 1 1 260px;">
+                <span class="eyebrow">Graph filter (.filter)</span>
+                <div class="filter">
+                  <svg class="filter__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input class="filter__input" type="search" placeholder="Filter commits…" aria-label="Filter commits" />
+                </div>
+              </div>
+              <div class="stack stack--tight" style="flex: 1 1 260px;">
+                <span class="eyebrow">Drift badge (.drift)</span>
+                <div class="sg-row">
+                  <span class="drift" title="2 ahead, 1 behind">
+                    <span class="drift__ahead">↑2</span>
+                    <span class="drift__behind">↓1</span>
+                  </span>
+                  <span class="drift" title="3 ahead"><span class="drift__ahead">↑3</span></span>
+                  <span class="drift" title="2 behind"><span class="drift__behind">↓2</span></span>
+                  <span class="drift drift--clean" title="Up to date with upstream">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg>
+                    Up to date
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Shortcuts overlay -->
+            <div class="stack stack--tight">
+              <span class="eyebrow">Keyboard shortcuts (.shortcuts)</span>
+              <p class="sg-note">Modal-style help panel reusing <span class="mono">.modal-overlay</span>. Press the button to open the live overlay.</p>
+              <div class="sg-row">
+                <button class="btn btn--secondary" onclick="document.getElementById('sg-shortcuts').classList.add('is-open')">Show shortcuts (?)</button>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
         <!-- ===== Class vocabulary ===== -->
         <section class="sg-section">
           <span class="eyebrow">Reference</span>
@@ -1292,6 +1376,7 @@ From github.com:you/webgate
             <div><code>.changes__status--</code> add del mod ren untracked conflict</div>
             <div><code>.commit-box</code> __actions</div>
             <div><code>.diff</code> __line(--add --del --meta) __ln __code</div>
+            <div><code>.diff__hunk-head</code> __stage __unstage · <code>.diff--split</code></div>
             <div><code>.branch-menu</code> __group __label __item .is-current</div>
             <div><code>.branch-menu__</code> check name chips chip(--ahead --behind)</div>
             <div><code>.graph</code> __row(.is-selected) __lanes __content</div>
@@ -1313,6 +1398,9 @@ From github.com:you/webgate
             <div><code>.merge-editor__</code> hunk-head line(--add --del --ctx) ln code</div>
             <div><code>.stash-list</code> __row __index __msg __meta __actions</div>
             <div><code>.terminal-pane</code>(.is-collapsed) __head __caret __title __actions __body</div>
+            <div><code>.filter</code> __icon __input</div>
+            <div><code>.drift</code> __ahead __behind --clean</div>
+            <div><code>.shortcuts</code> __header __title __body __row __key __act</div>
           </div></div>
         </section>
 
@@ -1346,6 +1434,28 @@ From github.com:you/webgate
       <div class="modal__footer">
         <button class="btn btn--ghost" onclick="document.getElementById('sg-onboarding').classList.remove('is-open')">Skip for now</button>
         <button class="btn btn--primary" onclick="document.getElementById('sg-onboarding').classList.remove('is-open')">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live shortcuts overlay (hidden until demo button toggles .is-open) -->
+  <div class="modal-overlay" id="sg-shortcuts" onclick="if(event.target===this)this.classList.remove('is-open')">
+    <div class="shortcuts" role="dialog" aria-label="Keyboard shortcuts">
+      <div class="shortcuts__header">
+        <h2 class="shortcuts__title">Keyboard shortcuts</h2>
+        <button class="btn btn--icon btn--sm" aria-label="Close" onclick="document.getElementById('sg-shortcuts').classList.remove('is-open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="shortcuts__body">
+        <div class="shortcuts__row"><kbd class="shortcuts__key">s</kbd><span class="shortcuts__act">Stage selected file</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">c</kbd><span class="shortcuts__act">Focus commit message / commit</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">p</kbd><span class="shortcuts__act">Push</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">f</kbd><span class="shortcuts__act">Fetch</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">/</kbd><span class="shortcuts__act">Focus graph filter</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">?</kbd><span class="shortcuts__act">Toggle this help</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">Esc</kbd><span class="shortcuts__act">Close menus / modals</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">↑↓</kbd><span class="shortcuts__act">Move through commits</span></div>
       </div>
     </div>
   </div>
