@@ -96,6 +96,24 @@ async def test_resize_propagates_to_child(tmp_path: Path) -> None:
         await session.terminate()
 
 
+async def test_resize_clamps_out_of_range_dimensions(tmp_path: Path) -> None:
+    # Out-of-range dims are clamped (cols 100000 -> 9999, rows 0 -> 1) rather
+    # than passed to TIOCSWINSZ verbatim or crashing.
+    script = (
+        "import os, sys; sys.stdin.readline();"
+        " s = os.get_terminal_size(); print(f'SIZE={s.columns}x{s.lines}')"
+    )
+    session = PtySession(str(tmp_path), command=[sys.executable, "-c", script])
+    await session.start()
+    try:
+        session.resize(cols=100000, rows=0)
+        await session.write("go\n")
+        output = await _read_until(session, b"SIZE=")
+        assert b"SIZE=9999x1" in output
+    finally:
+        await session.terminate()
+
+
 async def test_terminate_kills_child_and_is_idempotent(tmp_path: Path) -> None:
     script = "import time; time.sleep(60)"
     session = PtySession(str(tmp_path), command=[sys.executable, "-c", script])

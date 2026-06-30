@@ -687,8 +687,15 @@ async def get_commit_detail(path: str, sha: str) -> CommitDetail:
     fields = (meta.output.split(_SEP) + [""] * 8)[:8]
     full, short, parents, author, email, date, refs, subject = fields
     body_result = await run_git(["show", "-s", "--format=%b", sha], cwd=cwd)
-    numstat = await run_git(["show", "--numstat", "--format=", sha], cwd=cwd)
-    name_status = await run_git(["show", "--name-status", "--format=", sha], cwd=cwd)
+    # ``--first-parent`` makes ``git show`` emit an ordinary (non-combined) diff
+    # for merge commits. Without it, ``--name-status`` yields *nothing* for a
+    # merge (git suppresses the combined diff), so a merge commit's changed-file
+    # list would always come back empty. For non-merge and root commits the flag
+    # is a no-op. It is applied to both queries so their file sets stay aligned.
+    numstat = await run_git(["show", "--first-parent", "--numstat", "--format=", sha], cwd=cwd)
+    name_status = await run_git(
+        ["show", "--first-parent", "--name-status", "--format=", sha], cwd=cwd
+    )
     counts = _parse_numstat(numstat.output)
     files: list[CommitFile] = []
     for line in name_status.output.splitlines():
