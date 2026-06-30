@@ -222,6 +222,42 @@ class UndoResult(BaseModel):
     undone: str
 
 
+# --- Slice 4: hunk staging --------------------------------------------------
+
+
+class HunkLine(BaseModel):
+    """A single line within a diff hunk.
+
+    ``type`` is the leading git diff marker: ``" "`` (context), ``"+"``
+    (added), or ``"-"`` (removed). ``text`` is the line content with that
+    marker stripped.
+    """
+
+    type: str
+    text: str
+
+
+class Hunk(BaseModel):
+    """A single ``@@`` hunk of a file's unified diff.
+
+    ``patch`` is a self-contained, applyable patch: the file header lines
+    (``diff --git``/``---``/``+++``) plus this one hunk, suitable for piping to
+    ``git apply`` to stage or unstage exactly this hunk.
+    """
+
+    header: str
+    patch: str
+    lines: list[HunkLine]
+
+
+class FileHunks(BaseModel):
+    """The per-hunk breakdown of a single file's diff (staged or unstaged)."""
+
+    file: str
+    binary: bool
+    hunks: list[Hunk]
+
+
 class PullRequest(BaseModel):
     """A GitHub pull request (populated by the ``gh`` integration)."""
 
@@ -258,5 +294,8 @@ __all__ = [
     "Conflict",
     "ReflogEntry",
     "UndoResult",
+    "HunkLine",
+    "Hunk",
+    "FileHunks",
     "PullRequest",
 ]

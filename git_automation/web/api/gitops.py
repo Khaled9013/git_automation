@@ -10,6 +10,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from git_automation.core.git.client import (
+    amend_commit,
     checkout_branch,
     checkout_ref,
     cherry_pick,
@@ -20,17 +21,23 @@ from git_automation.core.git.client import (
     discard,
     get_changes,
     get_commit_detail,
+    get_commit_diff,
     get_diff,
     get_graph,
+    get_hunks,
     get_reflog,
     get_refs,
     list_branches,
     merge_branch,
     redo,
+    rename_branch,
     reset,
     stage,
+    stage_hunk,
+    track_branch,
     undo,
     unstage,
+    unstage_hunk,
 )
 from git_automation.core.models import (
     BranchList,
@@ -38,6 +45,7 @@ from git_automation.core.models import (
     CommandResult,
     CommitDetail,
     DiffResult,
+    FileHunks,
     GraphCommit,
     MergeResult,
     ReflogEntry,
@@ -111,6 +119,36 @@ class PathRequest(BaseModel):
     """Body for an operation that only needs a repository ``path``."""
 
     path: str
+
+
+class HunkRequest(BaseModel):
+    """Body for staging/unstaging a single hunk via its applyable ``patch``."""
+
+    path: str
+    file: str
+    patch: str
+
+
+class BranchRenameRequest(BaseModel):
+    """Body for renaming branch ``name`` to ``new_name``."""
+
+    path: str
+    name: str
+    new_name: str
+
+
+class BranchTrackRequest(BaseModel):
+    """Body for creating a local branch tracking ``remote_ref``."""
+
+    path: str
+    remote_ref: str
+
+
+class AmendRequest(BaseModel):
+    """Body for amending HEAD, optionally replacing the commit ``message``."""
+
+    path: str
+    message: str | None = None
 
 
 class GraphResponse(BaseModel):
@@ -277,3 +315,62 @@ async def git_undo(body: PathRequest) -> UndoResult:
 async def git_redo(body: PathRequest) -> UndoResult:
     """Move HEAD forward one reflog step (best-effort)."""
     return await redo(body.path)
+
+
+# --- Slice 4: hunk staging ------------------------------------------------
+
+
+@router.get("/repo/hunks")
+async def read_hunks(
+    path: str = Query(...),
+    file: str = Query(...),
+    staged: bool = Query(False),
+) -> FileHunks:
+    """Return the per-hunk breakdown of ``file``'s (optionally staged) diff."""
+    return await get_hunks(path, file, staged)
+
+
+@router.post("/git/stage-hunk")
+async def git_stage_hunk(body: HunkRequest) -> CommandResult:
+    """Stage a single hunk by applying its patch to the index."""
+    return await stage_hunk(body.path, body.file, body.patch)
+
+
+@router.post("/git/unstage-hunk")
+async def git_unstage_hunk(body: HunkRequest) -> CommandResult:
+    """Unstage a single hunk by reverse-applying its patch."""
+    return await unstage_hunk(body.path, body.file, body.patch)
+
+
+# --- Slice 4: historical commit-file diff ---------------------------------
+
+
+@router.get("/repo/commit-diff")
+async def read_commit_diff(
+    path: str = Query(...),
+    sha: str = Query(...),
+    file: str = Query(...),
+) -> DiffResult:
+    """Return the diff commit ``sha`` introduced to ``file``."""
+    return await get_commit_diff(path, sha, file)
+
+
+# --- Slice 4: branch rename / track / amend -------------------------------
+
+
+@router.post("/git/branch/rename")
+async def git_branch_rename(body: BranchRenameRequest) -> CommandResult:
+    """Rename a branch (``git branch -m``)."""
+    return await rename_branch(body.path, body.name, body.new_name)
+
+
+@router.post("/git/branch/track")
+async def git_branch_track(body: BranchTrackRequest) -> CommandResult:
+    """Create and check out a local branch tracking a remote ref."""
+    return await track_branch(body.path, body.remote_ref)
+
+
+@router.post("/git/commit/amend")
+async def git_commit_amend(body: AmendRequest) -> CommandResult:
+    """Amend the most recent commit, optionally with a new message."""
+    return await amend_commit(body.path, body.message)

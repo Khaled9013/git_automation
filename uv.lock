@@ -135,6 +135,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "watchfiles" },
 ]
 
 [package.optional-dependencies]
@@ -156,6 +157,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pywebview", marker = "extra == 'desktop'", specifier = ">=5.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+    { name = "watchfiles", specifier = ">=0.21" },
 ]
 provides-extras = ["desktop"]
 

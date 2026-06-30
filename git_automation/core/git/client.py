@@ -21,7 +21,10 @@ from git_automation.core.models import (
     Conflict,
     DiffResult,
     FileChange,
+    FileHunks,
     GraphCommit,
+    Hunk,
+    HunkLine,
     MergeResult,
     MergeStatus,
     ReflogEntry,
@@ -1052,3 +1055,229 @@ async def redo(path: str) -> UndoResult:
     """
     cwd = validate_repo_path(path)
     return await _reflog_step(cwd)
+
+
+# --- Slice 4: hunk staging ------------------------------------------------
+
+
+def _hunk_header(line: str) -> str:
+    """Return the canonical ``@@ -a,b +c,d @@`` portion of a hunk header line.
+
+    A hunk header may carry a trailing section heading (e.g.
+    ``@@ -1,3 +1,4 @@ def foo():``); only the ``@@ ... @@`` range marker is kept.
+    """
+    parts = line.split("@@")
+    if len(parts) >= 3:
+        return f"@@{parts[1]}@@"
+    return line
+
+
+def _parse_file_hunks(diff: str) -> list[Hunk]:
+    """Split a single-file unified diff into independently applyable hunks.
+
+    The lines preceding the first ``@@`` (``diff --git``, ``index``, ``---``,
+    ``+++``, any mode lines) form the shared file header. Each hunk's ``patch``
+    is that header plus the one ``@@`` block, terminated by a single newline so
+    it applies cleanly with ``git apply``.
+
+    Args:
+        diff: The raw (unstripped) ``git diff`` output for one file.
+
+    Returns:
+        One :class:`Hunk` per ``@@`` block, in file order.
+    """
+    lines = diff.split("\n")
+    header: list[str] = []
+    idx = 0
+    while idx < len(lines) and not lines[idx].startswith("@@"):
+        header.append(lines[idx])
+        idx += 1
+
+    hunks: list[Hunk] = []
+    while idx < len(lines):
+        if not lines[idx].startswith("@@"):
+            idx += 1
+            continue
+        head_line = lines[idx]
+        body = [head_line]
+        idx += 1
+        while idx < len(lines) and not lines[idx].startswith("@@"):
+            if lines[idx].startswith("diff --git"):
+                break
+            body.append(lines[idx])
+            idx += 1
+        hunk_lines = [
+            HunkLine(type=line[0], text=line[1:])
+            for line in body[1:]
+            if line and line[0] in (" ", "+", "-")
+        ]
+        patch = "\n".join(header + body).rstrip("\n") + "\n"
+        hunks.append(Hunk(header=_hunk_header(head_line), patch=patch, lines=hunk_lines))
+    return hunks
+
+
+async def get_hunks(path: str, file: str, staged: bool = False) -> FileHunks:
+    """Return the per-hunk breakdown of ``file``'s diff in the repo at ``path``.
+
+    Args:
+        path: Path to a local repository.
+        file: Repository-relative path of the file to diff.
+        staged: When True, diff the staged version (``--cached``).
+
+    Returns:
+        A :class:`FileHunks`. ``binary`` files report no hunks. Each hunk's
+        ``patch`` can be fed straight to :func:`stage_hunk`/:func:`unstage_hunk`.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if ``file`` escapes the
+            worktree or enters ``.git``.
+    """
+    cwd = validate_repo_path(path)
+    _resolve_worktree_file(cwd, file)
+    args = ["diff"]
+    if staged:
+        args.append("--cached")
+    args += ["--", file]
+    # Use run_process for the *raw* stdout: CommandResult.output is stripped,
+    # which would corrupt patch round-tripping (leading context, trailing
+    # newline). git apply needs the exact bytes.
+    result = await process.run_process(["git", *args], cwd=cwd)
+    diff = result.stdout
+    binary = _is_binary_diff(diff)
+    hunks = [] if binary else _parse_file_hunks(diff)
+    return FileHunks(file=file, binary=binary, hunks=hunks)
+
+
+async def stage_hunk(path: str, file: str, patch: str) -> CommandResult:
+    """Stage a single hunk by applying ``patch`` to the index.
+
+    Pipes ``patch`` to ``git apply --cached`` so only the lines in that one hunk
+    are staged; other unstaged changes to ``file`` are left untouched.
+
+    Args:
+        path: Path to a local repository.
+        file: Repository-relative path the patch targets (validated, not passed
+            to git -- the patch itself names the file).
+        patch: A self-contained hunk patch (from :func:`get_hunks`).
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if ``file`` escapes the
+            worktree or enters ``.git``.
+    """
+    cwd = validate_repo_path(path)
+    _resolve_worktree_file(cwd, file)
+    result = await process.run_process(["git", "apply", "--cached"], cwd=cwd, stdin=patch)
+    return CommandResult(ok=result.ok, output=result.combined)
+
+
+async def unstage_hunk(path: str, file: str, patch: str) -> CommandResult:
+    """Unstage a single hunk by reverse-applying ``patch`` against the index.
+
+    Pipes ``patch`` to ``git apply --cached -R`` so only that one hunk is
+    removed from the index; other staged changes to ``file`` are preserved.
+
+    Args:
+        path: Path to a local repository.
+        file: Repository-relative path the patch targets (validated only).
+        patch: A self-contained hunk patch (from :func:`get_hunks` with
+            ``staged=True``).
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if ``file`` escapes the
+            worktree or enters ``.git``.
+    """
+    cwd = validate_repo_path(path)
+    _resolve_worktree_file(cwd, file)
+    result = await process.run_process(
+        ["git", "apply", "--cached", "-R"], cwd=cwd, stdin=patch
+    )
+    return CommandResult(ok=result.ok, output=result.combined)
+
+
+# --- Slice 4: historical commit-file diff ---------------------------------
+
+
+async def get_commit_diff(path: str, sha: str, file: str) -> DiffResult:
+    """Return the diff a commit introduced to a single ``file``.
+
+    Uses ``git show <sha> --first-parent -- <file>`` so the diff resolves for
+    merge commits (the first-parent diff) as well as ordinary commits.
+
+    Args:
+        path: Path to a local repository.
+        sha: The commit to inspect (branch name, tag, or SHA).
+        file: Repository-relative path of the file to diff.
+
+    Returns:
+        A :class:`DiffResult` with binary detection reused from :func:`get_diff`.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if ``sha`` starts with
+            ``-`` or ``file`` escapes the worktree / enters ``.git``.
+    """
+    cwd = validate_repo_path(path)
+    _reject_option(sha, "commit")
+    _resolve_worktree_file(cwd, file)
+    result = await run_git(["show", sha, "--first-parent", "--", file], cwd=cwd)
+    diff = result.output
+    return DiffResult(file=file, diff=diff, binary=_is_binary_diff(diff))
+
+
+# --- Slice 4: branch rename / track / amend -------------------------------
+
+
+async def rename_branch(path: str, name: str, new_name: str) -> CommandResult:
+    """Rename branch ``name`` to ``new_name`` (``git branch -m``).
+
+    Args:
+        path: Path to a local repository.
+        name: The existing branch name.
+        new_name: The new branch name.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if either name starts
+            with ``-``.
+    """
+    cwd = validate_repo_path(path)
+    _reject_option(name, "branch name")
+    _reject_option(new_name, "branch name")
+    return await run_git(["branch", "-m", name, new_name], cwd=cwd)
+
+
+async def track_branch(path: str, remote_ref: str) -> CommandResult:
+    """Create and check out a local branch tracking ``remote_ref``.
+
+    Runs ``git switch -c <leaf> --track <remote_ref>`` where ``leaf`` is the
+    portion of ``remote_ref`` after its first ``/`` (the remote prefix), e.g.
+    ``origin/feature`` -> local branch ``feature``.
+
+    Args:
+        path: Path to a local repository.
+        remote_ref: A remote-tracking ref such as ``origin/feature``.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if ``remote_ref`` starts
+            with ``-``.
+    """
+    cwd = validate_repo_path(path)
+    _reject_option(remote_ref, "remote ref")
+    leaf = remote_ref.split("/", 1)[1] if "/" in remote_ref else remote_ref
+    return await run_git(["switch", "-c", leaf, "--track", remote_ref], cwd=cwd)
+
+
+async def amend_commit(path: str, message: str | None = None) -> CommandResult:
+    """Amend the most recent commit.
+
+    Replaces the subject/body with ``message`` (``git commit --amend -m``) when
+    one is given; otherwise keeps the existing message (``--amend --no-edit``).
+    Either way the currently staged changes are folded into ``HEAD``.
+
+    Args:
+        path: Path to a local repository.
+        message: Optional replacement commit message; when omitted (or blank)
+            the existing message is preserved.
+    """
+    cwd = validate_repo_path(path)
+    if message and message.strip():
+        return await run_git(["commit", "--amend", "-m", message], cwd=cwd)
+    return await run_git(["commit", "--amend", "--no-edit"], cwd=cwd)
