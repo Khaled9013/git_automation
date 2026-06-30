@@ -28,7 +28,7 @@ from git_automation.core.github.models import Notification
 logger = logging.getLogger(__name__)
 
 # Only these notification reasons warrant an OS-level interrupt.
-_NOTIFY_REASONS = {"mention", "assign"}
+_NOTIFY_REASONS = {"mention", "team_mention", "assign"}
 
 # Repo-local state dir (gitignored); keeps the poller self-contained.
 _DEFAULT_STATE_DIR = Path(".gitauto")
@@ -36,6 +36,7 @@ _STATE_FILENAME = "notifier-state.json"
 
 _TITLES = {
     "mention": "GitHub: mentioned you",
+    "team_mention": "GitHub: your team was mentioned",
     "assign": "GitHub: assigned to you",
 }
 
@@ -53,21 +54,31 @@ def _state_path(state_dir: Path | str | None = None) -> Path:
     return base / _STATE_FILENAME
 
 
-def _load_seen(path: Path) -> set[str]:
-    """Load the persisted set of already-seen notification ids (empty on miss)."""
+def _load_seen(path: Path) -> dict[str, str]:
+    """Load the persisted map of notification id -> last-seen ``updated_at``.
+
+    Keying on ``updated_at`` (not just the id) is what lets a *re*-mention in an
+    already-seen thread re-notify: GitHub reuses one thread id per issue and only
+    bumps ``updated_at`` on new activity. A legacy list-format file (ids only) is
+    migrated to those ids mapped to an empty marker.
+    """
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
-        return set()
+        return {}
     seen = data.get("seen") if isinstance(data, dict) else None
-    return {str(x) for x in seen} if isinstance(seen, list) else set()
+    if isinstance(seen, dict):
+        return {str(k): str(v) for k, v in seen.items()}
+    if isinstance(seen, list):  # legacy format: ids only
+        return {str(x): "" for x in seen}
+    return {}
 
 
-def _save_seen(path: Path, seen: set[str]) -> None:
-    """Persist the seen-id set, swallowing (and logging) filesystem errors."""
+def _save_seen(path: Path, seen: dict[str, str]) -> None:
+    """Persist the seen map (id -> updated_at), swallowing/logging fs errors."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"seen": sorted(seen)}))
+        path.write_text(json.dumps({"seen": seen}))
     except OSError:
         logger.warning("notifier: could not persist state to %s", path, exc_info=True)
 
@@ -116,12 +127,12 @@ async def _noop_notify(_notification: Notification) -> None:
 
 
 async def poll_once(
-    seen: set[str],
+    seen: dict[str, str],
     notify: NotifyFn,
     *,
     prime: bool = False,
     publish: PublishFn = hub.publish,
-) -> set[str]:
+) -> dict[str, str]:
     """Run one poll: fetch notifications, notify on new mention/assign threads.
 
     After diffing, the full round is broadcast to live browser subscribers via
@@ -129,27 +140,33 @@ async def poll_once(
     on the priming round, so a freshly connected UI gets current state).
 
     Args:
-        seen: The set of already-seen notification ids; mutated in place to add
-            every id observed this round.
+        seen: Map of already-seen notification id -> last-seen ``updated_at``;
+            mutated in place. A thread counts as new when its id is unseen OR its
+            ``updated_at`` changed since last seen (i.e. fresh activity such as a
+            new mention in the same issue).
         notify: Async callback invoked once per *new* notify-worthy thread.
-        prime: When ``True``, only record ids (no notifications, no ``new``) --
+        prime: When ``True``, only record state (no notifications, no ``new``) --
             used for the first round so existing mentions are not replayed as
             fresh alerts.
         publish: Async broadcast sink for the live event (default ``hub.publish``).
 
     Returns:
-        The (mutated) ``seen`` set, for convenience.
+        The (mutated) ``seen`` map, for convenience.
     """
     notifications = await client.list_notifications()
     new_notes: list[Notification] = []
     for note in notifications:
-        if note.id in seen:
+        # GitHub reuses one notification thread (stable id) per issue/PR and
+        # bumps updated_at on each new activity. Keying on (id, updated_at) means
+        # a *re*-mention in an already-seen thread re-notifies, not just the
+        # first mention ever.
+        if seen.get(note.id) == note.updated_at:
             continue
         if not prime:
             new_notes.append(note)
             if note.reason in _NOTIFY_REASONS:
                 await notify(note)
-        seen.add(note.id)
+        seen[note.id] = note.updated_at
 
     unread = sum(1 for note in notifications if note.unread)
     logger.info(

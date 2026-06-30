@@ -16,13 +16,22 @@ import * as api from './api.js';
 const FALLBACK_INTERVAL_MS = 90000; // slow poll, used ONLY while the socket is down
 const RECONNECT_BASE_MS = 1000; // first reconnect delay
 const RECONNECT_MAX_MS = 30000; // capped backoff ceiling
-const SEEN_KEY = 'gh.alerts.seenIds';
+// v2: keys are now `id@updated_at` (was bare ids). A fresh key avoids treating
+// the whole inbox as new on upgrade — the first diff just re-seeds silently.
+const SEEN_KEY = 'gh.alerts.seen.v2';
 const PREF_KEY = 'gh.alerts.browserEnabled';
 
 /** reasons that warrant an active alert (toast / OS notification). */
 function isAlertReason(reason) {
   const r = String(reason || '').toLowerCase();
-  return r === 'mention' || r === 'assign' || r === 'assigned';
+  return r === 'mention' || r === 'team_mention' || r === 'assign' || r === 'assigned';
+}
+
+// GitHub reuses one notification thread (stable id) per issue and only bumps
+// updated_at on new activity. Key the seen-set on (id, updated_at) so a
+// re-mention in an already-seen thread re-alerts instead of being swallowed.
+function keyOf(note) {
+  return `${note.id}@${note.updated_at || ''}`;
 }
 
 function loadSeen() {
@@ -150,8 +159,8 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
   function processNew(list) {
     if (!Array.isArray(list)) return;
     for (const note of list) {
-      if (!note || note.id == null || seen.has(note.id)) continue;
-      seen.add(note.id);
+      if (!note || note.id == null || seen.has(keyOf(note))) continue;
+      seen.add(keyOf(note));
       if (!isAlertReason(note.reason)) continue;
       const label = note.reason.toLowerCase() === 'mention' ? 'New mention' : 'New assignment';
       if (toast) toast('info', label, `${note.repo} — ${note.title}`);
@@ -165,7 +174,7 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
     if (!Array.isArray(items)) return;
     let changed = false;
     for (const it of items) {
-      if (it && it.id != null && !seen.has(it.id)) { seen.add(it.id); changed = true; }
+      if (it && it.id != null && !seen.has(keyOf(it))) { seen.add(keyOf(it)); changed = true; }
     }
     if (changed) saveSeen(seen);
   }
@@ -259,7 +268,7 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
       markSeen(items);
       seeded = true;
     } else {
-      processNew(items.filter((it) => it && it.id != null && !seen.has(it.id)));
+      processNew(items.filter((it) => it && it.id != null && !seen.has(keyOf(it))));
       markSeen(items);
     }
     if (onChange) onChange(items);

@@ -104,7 +104,7 @@ async def test_poll_once_publishes_event_shape_and_notifies(
     async def notify(n: Notification) -> None:
         fired.append(n)
 
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     await notifier.poll_once(seen, notify, prime=False, publish=publish)
 
     assert len(published) == 1
@@ -132,7 +132,7 @@ async def test_poll_once_prime_publishes_with_no_new(
     async def notify(n: Notification) -> None:  # pragma: no cover - must not run
         fired.append(n)
 
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     await notifier.poll_once(seen, notify, prime=True, publish=publish)
 
     event = published[0]

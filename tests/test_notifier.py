@@ -52,7 +52,7 @@ async def test_new_mention_in_round_two_fires_once(monkeypatch: pytest.MonkeyPat
     async def notify(n: Notification) -> None:
         fired.append(n)
 
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     # Round 1 primes (records ids, no alerts); round 2 alerts on the new id only.
     await notifier.poll_once(seen, notify, prime=True)
     await notifier.poll_once(seen, notify, prime=False)
@@ -60,7 +60,28 @@ async def test_new_mention_in_round_two_fires_once(monkeypatch: pytest.MonkeyPat
     assert len(fired) == 1
     assert fired[0].id == "2"
     assert fired[0].title == "Fresh mention"
-    assert seen == {"1", "2"}
+    assert set(seen) == {"1", "2"}
+
+
+async def test_re_mention_in_same_thread_renotifies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A re-mention reuses the thread id but bumps updated_at -> must re-notify."""
+    first = _note("1", "mention", title="Mention")
+    first.updated_at = "2026-06-30T10:00:00Z"
+    bumped = _note("1", "mention", title="Mention again")
+    bumped.updated_at = "2026-06-30T11:30:00Z"  # same id, newer activity
+    _stub_rounds(monkeypatch, [[first], [bumped]])
+
+    fired: list[Notification] = []
+
+    async def notify(n: Notification) -> None:
+        fired.append(n)
+
+    seen: dict[str, str] = {}
+    await notifier.poll_once(seen, notify, prime=True)  # primes id->10:00
+    await notifier.poll_once(seen, notify, prime=False)  # updated_at changed -> fires
+
+    assert [n.title for n in fired] == ["Mention again"]
+    assert seen == {"1": "2026-06-30T11:30:00Z"}
 
 
 async def test_assign_reason_also_notifies(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,7 +91,7 @@ async def test_assign_reason_also_notifies(monkeypatch: pytest.MonkeyPatch) -> N
     async def notify(n: Notification) -> None:
         fired.append(n)
 
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     await notifier.poll_once(seen, notify, prime=True)
     await notifier.poll_once(seen, notify, prime=False)
     assert [n.id for n in fired] == ["9"]
@@ -95,11 +116,11 @@ async def test_non_mention_assign_reasons_do_not_notify(
     async def notify(n: Notification) -> None:
         fired.append(n)
 
-    seen: set[str] = set()
+    seen: dict[str, str] = {}
     await notifier.poll_once(seen, notify, prime=True)
     await notifier.poll_once(seen, notify, prime=False)
     assert fired == []
-    assert seen == {"3", "4", "5"}
+    assert set(seen) == {"3", "4", "5"}
 
 
 async def test_already_seen_id_not_renotified(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -109,7 +130,8 @@ async def test_already_seen_id_not_renotified(monkeypatch: pytest.MonkeyPatch) -
     async def notify(n: Notification) -> None:
         fired.append(n)
 
-    seen = {"1"}
+    # Same id AND same updated_at as the note -> already seen, no re-alert.
+    seen = {"1": "2026-06-30T10:00:00Z"}
     await notifier.poll_once(seen, notify, prime=False)
     assert fired == []
 
