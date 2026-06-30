@@ -16,6 +16,7 @@ from starlette.responses import Response
 from git_automation import __version__
 from git_automation.core.gh import client as gh_client
 from git_automation.core.github import notifier
+from git_automation.core.github.hub import hub
 from git_automation.web.api import api_router, register_error_handlers
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         authenticated, _ = await gh_client.auth_status()
         if authenticated:
-            task = asyncio.create_task(notifier.run_poller())
+            # One poll loop drives both OS notifications and the live browser
+            # push (via hub.publish -> WS /api/github/events).
+            task = asyncio.create_task(notifier.run_poller(publish=hub.publish))
     except Exception:  # noqa: BLE001 - startup must never crash
         logger.warning("could not start GitHub notifier", exc_info=True)
     try:
