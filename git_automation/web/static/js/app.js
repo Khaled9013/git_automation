@@ -263,6 +263,32 @@ function boot() {
     }
   }
 
+  // --- Remote operations (push / pull / fetch against a chosen remote) -------
+
+  function doFetch(remote) {
+    return run('Fetch', (p) => api.gitFetch(p, remote), {
+      successTitle: 'Fetch complete', successMsg: remote,
+    });
+  }
+
+  async function doPull(remote) {
+    const status = repoRef && repoRef.status();
+    const branch = status && status.current_branch ? status.current_branch : null;
+    await run('Pull', (p) => api.gitPull(p, remote, branch), {
+      successTitle: 'Pull complete', successMsg: remote,
+    });
+    await checkConflicts();
+  }
+
+  function doPush(remote) {
+    const status = repoRef && repoRef.status();
+    const branch = status && status.current_branch ? status.current_branch : null;
+    const setUpstream = !(status && status.upstream);
+    return run('Push', (p) => api.gitPush(p, remote, branch, setUpstream), {
+      successTitle: 'Push complete', successMsg: remote,
+    });
+  }
+
   async function copySha(sha) {
     try {
       await navigator.clipboard.writeText(sha);
@@ -385,8 +411,9 @@ function boot() {
   // --- Toolbar ---------------------------------------------------------------
   const toolbar = initToolbar($('toolbar'), {
     onOpenRepo: () => fsBrowser.open(),
-    onPull: async () => { await repoRef.pull(); await refresh(); await checkConflicts(); },
-    onPush: async () => { await repoRef.push(); },
+    onPull: (remote) => doPull(remote),
+    onPush: (remote) => doPush(remote),
+    onFetch: (remote) => doFetch(remote),
     onBranch: () => doCreateBranch(),
     onStash: () => stash.create(),
     onPop: () => stash.pop(),
@@ -401,6 +428,7 @@ function boot() {
     onRepoLoaded(status) {
       const path = status.path;
       toolbar.setRepo(basename(path));
+      toolbar.setRemoteContext(status);
       toolbar.setEnabled(true);
       setDetailMode('commit');
       branches.load(path);

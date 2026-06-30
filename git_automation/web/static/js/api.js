@@ -154,6 +154,11 @@ export function commit(path, message) {
   return postJson('/api/git/commit', { path, message });
 }
 
+/** POST /api/git/delete — remove files from the working tree (destructive — confirm in UI first). */
+export function deleteFiles(path, files) {
+  return postJson('/api/git/delete', { path, files });
+}
+
 /** GET /api/repo/diff?path=&file=&staged= → { file, diff, binary } */
 export function getDiff(path, file, staged = false) {
   const q = `path=${encodeURIComponent(path)}&file=${encodeURIComponent(file)}&staged=${staged ? 'true' : 'false'}`;
@@ -262,6 +267,11 @@ export function mergeAbort(path) {
 /** POST /api/git/stash */
 export function stash(path, message = null) {
   return postJson('/api/git/stash', { path, message });
+}
+
+/** POST /api/git/stash — stash only the given files (partial stash). */
+export function stashFiles(path, files, message = null) {
+  return postJson('/api/git/stash', { path, message, files });
 }
 
 /** POST /api/git/stash/pop */

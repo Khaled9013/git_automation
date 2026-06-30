@@ -40,6 +40,9 @@ export function initSidebar(root, cbs = {}) {
   let path = null;
   // Remember which sections the user collapsed across reloads.
   const collapsed = new Set(['Stashes']);
+  // Remote sub-groups (origin, upstream, …) are collapsed by default; this set
+  // remembers the ones the user expanded, persisting across reloads.
+  const remoteExpanded = new Set();
 
   function chip(modifier, glyph, title) {
     return el('span', {
@@ -98,6 +101,30 @@ export function initSidebar(root, cbs = {}) {
     return sec;
   }
 
+  // A nested, per-remote collapsible node inside the REMOTE section. Collapsed
+  // by default; expand state is remembered in `remoteExpanded` across reloads.
+  function remoteSubsection(remoteName, rows) {
+    const isExpanded = remoteExpanded.has(remoteName);
+    const sec = el('div', {
+      class: `sidebar__section${isExpanded ? '' : ' is-collapsed'}`,
+    });
+    const header = el('button', { class: 'sidebar__header', attrs: { type: 'button' } });
+    header.innerHTML = ICONS.caret + ICONS.remote;
+    header.appendChild(el('span', { class: 'sidebar__title', text: remoteName }));
+    header.appendChild(el('span', { class: 'sidebar__count', text: String(rows.length) }));
+    header.addEventListener('click', () => {
+      const nowCollapsed = sec.classList.toggle('is-collapsed');
+      if (nowCollapsed) remoteExpanded.delete(remoteName);
+      else remoteExpanded.add(remoteName);
+    });
+    sec.appendChild(header);
+
+    const group = el('div', { class: 'sidebar__group' });
+    for (const r of rows) group.appendChild(r);
+    sec.appendChild(group);
+    return sec;
+  }
+
   function render(refs) {
     root.replaceChildren();
 
@@ -120,18 +147,32 @@ export function initSidebar(root, cbs = {}) {
     });
     root.appendChild(section('Local', locals.length, locals));
 
-    // REMOTE
-    const remotes = (refs.remote || []).map((r) => {
-      const local = r.name.includes('/') ? r.name.slice(r.name.indexOf('/') + 1) : r.name;
-      const entry = item({
-        icon: ICONS.remote,
-        name: r.name,
-        onActivate: () => cbs.onCheckout && cbs.onCheckout(local),
-        onContext: (x, y) => cbs.onBranchMenu && cbs.onBranchMenu({ name: r.name, local, kind: 'remote' }, x, y),
+    // REMOTE — grouped by remote (origin, upstream, …), each collapsible.
+    const remoteRefs = refs.remote || [];
+    const byRemote = new Map(); // remoteName -> [refs], preserving order
+    for (const r of remoteRefs) {
+      const slash = r.name.indexOf('/');
+      const remoteName = slash >= 0 ? r.name.slice(0, slash) : r.name;
+      if (!byRemote.has(remoteName)) byRemote.set(remoteName, []);
+      byRemote.get(remoteName).push(r);
+    }
+    const remoteGroups = [];
+    for (const [remoteName, group] of byRemote) {
+      const rows = group.map((r) => {
+        const slash = r.name.indexOf('/');
+        const local = slash >= 0 ? r.name.slice(slash + 1) : r.name;
+        const entry = item({
+          icon: ICONS.branch,
+          name: local, // display the branch leaf; the remote is the parent node
+          title: r.name,
+          onActivate: () => cbs.onCheckout && cbs.onCheckout(local),
+          onContext: (x, y) => cbs.onBranchMenu && cbs.onBranchMenu({ name: r.name, local, kind: 'remote' }, x, y),
+        });
+        return attach(entry, null);
       });
-      return attach(entry, null);
-    });
-    root.appendChild(section('Remote', remotes.length, remotes));
+      remoteGroups.push(remoteSubsection(remoteName, rows));
+    }
+    root.appendChild(section('Remote', remoteRefs.length, remoteGroups));
 
     // TAGS
     const tags = (refs.tags || []).map((t) => {

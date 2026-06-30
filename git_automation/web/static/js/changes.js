@@ -1,9 +1,17 @@
 // changes.js — staged / unstaged / untracked file lists with per-file and bulk
 // stage / unstage / discard actions, plus a commit message box. Renders the
-// `.changes` component; discard is confirmed before it runs.
+// `.changes` component.
+//
+// Selection: click selects one file; Ctrl/Cmd-click toggles a file in/out of the
+// selection; Shift-click selects a contiguous range (over the flat, rendered
+// order). Right-clicking a file (or anywhere in the selection) opens a `.ctxmenu`
+// (reusing contextmenu.js) with Stage / Unstage / Discard / Delete / Stash
+// selected — every action applies to the whole current selection, so the user
+// can stage just some of the changed files. Discard and Delete confirm first.
 
 import * as api from './api.js';
 import { el, toast, confirmDialog } from './ui.js';
+import { createContextMenu } from './contextmenu.js';
 
 const STATUS_CLASS = {
   A: 'changes__status--add',
@@ -15,6 +23,15 @@ const STATUS_CLASS = {
 };
 const STATUS_TITLE = {
   A: 'Added', D: 'Deleted', M: 'Modified', R: 'Renamed', C: 'Copied', U: 'Conflict', '?': 'Untracked',
+};
+
+// Inner-SVG markup for context-menu icons (wrapped by contextmenu.js).
+const MENU_ICON = {
+  stage: '<path d="M12 5v14M5 12h14"/>',
+  unstage: '<path d="M5 12h14"/>',
+  discard: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  delete: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>',
+  stash: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>',
 };
 
 function pathParts(p) {
@@ -32,9 +49,19 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
   let path = null;
   let branch = null;
   let data = { staged: [], unstaged: [], untracked: [] };
-  let selected = null; // { file, staged }
+  // Multi-selection across the three lists. Keys identify a row uniquely so the
+  // same path can be selected in both the staged and unstaged sections.
+  let selection = new Set(); // Set<key>
+  let anchorKey = null; // range-selection anchor
+  let flatRows = []; // rows in rendered order: { key, file, staged, untracked }
   let message = '';
   let busy = false;
+
+  const contextMenu = createContextMenu();
+
+  function rowKey(section, file) {
+    return `${section} ${file}`;
+  }
 
   function statusGlyph(code) {
     const c = (code || '').charAt(0).toUpperCase();
@@ -72,11 +99,10 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
     return b;
   }
 
-  function fileRow({ file, code, staged, untracked }) {
+  function fileRow({ section, file, code, staged, untracked }) {
+    const key = rowKey(section, file);
     const row = el('div', { class: 'changes__file', attrs: { role: 'button', tabindex: '0' } });
-    if (selected && selected.file === file && selected.staged === staged) {
-      row.classList.add('is-selected');
-    }
+    if (selection.has(key)) row.classList.add('is-selected');
     row.appendChild(untracked ? untrackedGlyph() : statusGlyph(code));
     row.appendChild(pathLabel(file));
 
@@ -89,19 +115,78 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
     }
     row.appendChild(actions);
 
-    const select = () => {
-      selected = { file, staged };
-      render();
-      if (onSelectFile) onSelectFile(file, staged);
-    };
-    row.addEventListener('click', select);
+    row.addEventListener('click', (e) => handleRowClick(e, key, file, staged));
     row.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        select();
+        handleRowClick(e, key, file, staged);
       }
     });
+    row.addEventListener('contextmenu', (e) => handleRowContext(e, key, file, staged));
     return row;
+  }
+
+  // ---- Selection ------------------------------------------------------------
+
+  function handleRowClick(e, key, file, staged) {
+    const index = flatRows.findIndex((r) => r.key === key);
+    if (e.shiftKey && anchorKey != null) {
+      const from = flatRows.findIndex((r) => r.key === anchorKey);
+      if (from >= 0 && index >= 0) {
+        const [lo, hi] = from <= index ? [from, index] : [index, from];
+        selection = new Set(flatRows.slice(lo, hi + 1).map((r) => r.key));
+      }
+    } else if (e.ctrlKey || e.metaKey) {
+      if (selection.has(key)) selection.delete(key);
+      else selection.add(key);
+      anchorKey = key;
+    } else {
+      selection = new Set([key]);
+      anchorKey = key;
+    }
+    render();
+    if (onSelectFile) onSelectFile(file, staged);
+  }
+
+  function handleRowContext(e, key, file, staged) {
+    e.preventDefault();
+    // Right-clicking outside the current selection narrows it to that one file.
+    if (!selection.has(key)) {
+      selection = new Set([key]);
+      anchorKey = key;
+      render();
+      if (onSelectFile) onSelectFile(file, staged);
+    }
+    openMenu(e.clientX, e.clientY);
+  }
+
+  function selectedRows() {
+    return flatRows.filter((r) => selection.has(r.key));
+  }
+
+  function openMenu(x, y) {
+    const rows = selectedRows();
+    if (rows.length === 0) return;
+    const toStage = rows.filter((r) => !r.staged).map((r) => r.file);
+    const toUnstage = rows.filter((r) => r.staged).map((r) => r.file);
+    const allPaths = Array.from(new Set(rows.map((r) => r.file)));
+    const suffix = allPaths.length > 1 ? ` (${allPaths.length})` : '';
+
+    contextMenu.open(x, y, [
+      {
+        label: `Stage${suffix}`, icon: MENU_ICON.stage, disabled: toStage.length === 0,
+        onSelect: () => doFiles(api.stage, toStage, { reload: true }),
+      },
+      {
+        label: `Unstage${suffix}`, icon: MENU_ICON.unstage, disabled: toUnstage.length === 0,
+        onSelect: () => doFiles(api.unstage, toUnstage, { reload: true }),
+      },
+      { sep: true },
+      { label: `Discard${suffix}`, icon: MENU_ICON.discard, danger: true, onSelect: () => doDiscard(allPaths) },
+      { label: `Delete${suffix}`, icon: MENU_ICON.delete, danger: true, onSelect: () => doDelete(allPaths) },
+      { sep: true },
+      { label: `Stash selected${suffix}`, icon: MENU_ICON.stash, onSelect: () => doStash(allPaths) },
+    ]);
   }
 
   function section(title, files, { bulkLabel, bulkAction, render: renderRow }) {
@@ -128,6 +213,13 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
     const nothing =
       stagedFiles.length === 0 && unstagedFiles.length === 0 && untrackedFiles.length === 0;
 
+    // Rebuild the flat, rendered order used for range selection.
+    flatRows = [
+      ...stagedFiles.map((f) => ({ key: rowKey('S', f.path), file: f.path, staged: true, untracked: false })),
+      ...unstagedFiles.map((f) => ({ key: rowKey('U', f.path), file: f.path, staged: false, untracked: false })),
+      ...untrackedFiles.map((p) => ({ key: rowKey('T', p), file: p, staged: false, untracked: true })),
+    ];
+
     const wrap = el('div', { class: 'changes' });
 
     if (nothing) {
@@ -143,21 +235,21 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
         section('Staged', stagedFiles, {
           bulkLabel: 'Unstage all',
           bulkAction: () => doFiles(api.unstage, stagedFiles.map((f) => f.path), { reload: true }),
-          render: (f) => fileRow({ file: f.path, code: f.status, staged: true }),
+          render: (f) => fileRow({ section: 'S', file: f.path, code: f.status, staged: true }),
         }),
       );
       wrap.appendChild(
         section('Unstaged', unstagedFiles, {
           bulkLabel: 'Stage all',
           bulkAction: () => doFiles(api.stage, unstagedFiles.map((f) => f.path), { reload: true }),
-          render: (f) => fileRow({ file: f.path, code: f.status, staged: false }),
+          render: (f) => fileRow({ section: 'U', file: f.path, code: f.status, staged: false }),
         }),
       );
       wrap.appendChild(
         section('Untracked', untrackedFiles, {
           bulkLabel: 'Stage all',
           bulkAction: () => doFiles(api.stage, untrackedFiles.slice(), { reload: true }),
-          render: (p) => fileRow({ file: p, staged: false, untracked: true }),
+          render: (p) => fileRow({ section: 'T', file: p, staged: false, untracked: true }),
         }),
       );
     }
@@ -202,32 +294,39 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
 
   // ---- Operations -----------------------------------------------------------
 
+  function pruneSelection() {
+    const live = new Set(flatRows.map((r) => r.key));
+    for (const k of Array.from(selection)) if (!live.has(k)) selection.delete(k);
+    if (anchorKey && !live.has(anchorKey)) anchorKey = null;
+  }
+
   async function reloadSelf() {
     if (!path) return;
     try {
       data = await api.getChanges(path);
-      // Drop selection if the file no longer exists in either list.
-      if (selected) {
-        const all = [
-          ...(data.staged || []).map((f) => f.path),
-          ...(data.unstaged || []).map((f) => f.path),
-          ...(data.untracked || []),
-        ];
-        if (!all.includes(selected.file)) selected = null;
-      }
-      render();
+      render(); // rebuilds flatRows from the fresh data
+      pruneSelection();
+      render(); // reflect the pruned selection in the row styling
     } catch (err) {
       toast('error', 'Could not load changes', err.message);
     }
   }
 
-  async function doFiles(fn, files, { reload } = {}) {
+  async function doFiles(fn, files, { reload, full } = {}) {
     if (!path || busy || files.length === 0) return;
     busy = true;
     try {
-      await fn(path, files);
-      if (reload) await reloadSelf();
-      if (refreshStatus) await refreshStatus();
+      const result = await fn(path, files);
+      if (result && result.ok === false) {
+        toast('error', 'Operation failed', result.output || 'git reported a failure.');
+        return;
+      }
+      if (full && refreshAll) {
+        await refreshAll();
+      } else {
+        if (reload) await reloadSelf();
+        if (refreshStatus) await refreshStatus();
+      }
     } catch (err) {
       toast('error', 'Operation failed', err.message);
     } finally {
@@ -247,6 +346,24 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
     await doFiles(api.discard, files, { reload: true });
   }
 
+  async function doDelete(files) {
+    if (!path || busy || files.length === 0) return;
+    const ok = await confirmDialog({
+      title: files.length === 1 ? `Delete ${pathParts(files[0]).name}?` : `Delete ${files.length} files?`,
+      message: 'This permanently removes the file(s) from the working tree. It cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) return;
+    await doFiles(api.deleteFiles, files, { reload: true });
+  }
+
+  async function doStash(files) {
+    if (!path || busy || files.length === 0) return;
+    // Full refresh so the new stash shows up in the sidebar.
+    await doFiles((p, f) => api.stashFiles(p, f, null), files, { full: true });
+  }
+
   async function doCommit() {
     const msg = message.trim();
     if (!path || busy || !msg || (data.staged || []).length === 0) return;
@@ -254,7 +371,8 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
     try {
       await api.commit(path, msg);
       message = '';
-      selected = null;
+      selection = new Set();
+      anchorKey = null;
       toast('success', 'Commit created', msg.split('\n')[0]);
       if (refreshAll) await refreshAll();
       else await reloadSelf();
@@ -270,7 +388,8 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
   async function load(repoPath, branchName) {
     path = repoPath;
     branch = branchName || null;
-    selected = null;
+    selection = new Set();
+    anchorKey = null;
     message = '';
     await reloadSelf();
   }
