@@ -1341,6 +1341,213 @@ From github.com:you/webgate
           </div>
         </section>
 
+        <!-- ===================================================================
+             GITHUB COCKPIT — the second tool (top app-nav + notifications /
+             issues / detail). Static markup only.
+             =================================================================== -->
+        <section class="sg-section">
+          <span class="eyebrow">GitHub cockpit</span>
+          <h2>Top app-nav (.appnav)</h2>
+          <p class="sg-note">A slim tab bar that sits above the whole shell to switch tools: <span class="mono">Git</span> (the 3-pane cockpit), <span class="mono">GitHub</span> (new), and a disabled <span class="mono">AI</span> placeholder. The active tab carries an accent underline; an <span class="mono">.appnav__badge</span> shows unread notifications.</p>
+          <div class="sg-demo-frame">
+            <nav class="appnav" aria-label="Tools">
+              <span class="appnav__brand"><span class="topbar__mark">g</span> git-automation</span>
+              <button class="appnav__tab">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="4" r="1.6"/><circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="6" r="1.6"/><path d="M4 5.6v4.8M5.6 4H9a3 3 0 0 1 3 3v.4"/></svg>
+                Git
+              </button>
+              <button class="appnav__tab is-active" aria-current="page">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg>
+                GitHub
+                <span class="appnav__badge" aria-label="5 unread">5</span>
+              </button>
+              <button class="appnav__tab" disabled aria-disabled="true" title="Coming soon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M5 8l2 1M19 8l-2 1"/><rect x="6" y="9" width="12" height="10" rx="2"/><path d="M9 14h.01M15 14h.01"/></svg>
+                AI
+              </button>
+            </nav>
+          </div>
+        </section>
+
+        <section class="sg-section">
+          <span class="eyebrow">GitHub cockpit</span>
+          <h2>Notifications inbox &amp; issue detail</h2>
+          <p class="sg-note">The GitHub view: a two-pane <span class="mono">.gh-layout</span> (list | detail). The list shows <span class="mono">.gh-list__row</span>s with a <span class="mono">.gh-list__reason</span> chip (<span class="mono">--mention</span> / <span class="mono">--assign</span> / <span class="mono">--review</span> / <span class="mono">--comment</span>), repo + title and time; <span class="mono">.is-unread</span> rows get an accent rail and a brighter title. A row click opens it in the <span class="mono">.gh-detail</span> pane.</p>
+          <div class="gh-layout">
+
+            <!-- List pane -->
+            <div class="panel"><div class="panel__body stack stack--tight" style="padding:var(--space-3)">
+              <div class="cluster" style="justify-content:space-between">
+                <span class="panel__title">Notifications</span>
+                <button class="btn btn--ghost btn--sm">Mark read</button>
+              </div>
+              <div class="gh-list" role="list">
+
+                <button class="gh-list__row is-unread is-selected" role="listitem">
+                  <span class="gh-list__reason gh-list__reason--mention">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1"/></svg>
+                    Mention
+                  </span>
+                  <span class="gh-list__body">
+                    <span class="gh-list__title">@you what do you think of the new lane packer?</span>
+                    <span class="gh-list__repo">you/webgate #142</span>
+                  </span>
+                  <span class="gh-list__time">2h</span>
+                </button>
+
+                <button class="gh-list__row is-unread" role="listitem">
+                  <span class="gh-list__reason gh-list__reason--assign">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                    Assigned
+                  </span>
+                  <span class="gh-list__body">
+                    <span class="gh-list__title">Crash when opening a bare repository</span>
+                    <span class="gh-list__repo">acme/webgate #318</span>
+                  </span>
+                  <span class="gh-list__time">5h</span>
+                </button>
+
+                <button class="gh-list__row" role="listitem">
+                  <span class="gh-list__reason gh-list__reason--review">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>
+                    Review
+                  </span>
+                  <span class="gh-list__body">
+                    <span class="gh-list__title">Review requested: split-diff column pairs</span>
+                    <span class="gh-list__repo">you/webgate #151</span>
+                  </span>
+                  <span class="gh-list__time">1d</span>
+                </button>
+
+                <button class="gh-list__row" role="listitem">
+                  <span class="gh-list__reason gh-list__reason--comment">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Comment
+                  </span>
+                  <span class="gh-list__body">
+                    <span class="gh-list__title">Re: tokens: add lane palette — looks good to me</span>
+                    <span class="gh-list__repo">you/webgate #138</span>
+                  </span>
+                  <span class="gh-list__time">2d</span>
+                </button>
+
+              </div>
+            </div></div>
+
+            <!-- Detail pane -->
+            <div class="panel" style="padding:0"><div style="padding:0">
+              <div class="gh-detail">
+                <div class="gh-detail__header">
+                  <div class="gh-detail__title">@you what do you think of the new lane packer? <span class="gh-detail__num">#142</span></div>
+                  <div class="gh-detail__meta">
+                    <span class="badge badge--success">
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9 12h6"/></svg>
+                      Open
+                    </span>
+                    <span class="gh-detail__author">opened by <span class="mono">@linus</span> · 2h ago</span>
+                  </div>
+                  <div class="gh-detail__labels">
+                    <span class="badge badge--accent">enhancement</span>
+                    <span class="badge badge--warning">needs-discussion</span>
+                    <span class="badge">graph</span>
+                  </div>
+                </div>
+
+                <div class="gh-detail__body">The greedy packer keeps lanes stable across refreshes but uses more columns on wide histories. Should we cap the lane count at 6 and fold overflow, or keep it unbounded? Curious what you think before I wire it into the client.</div>
+
+                <div class="gh-comment">
+                  <span class="gh-comment__avatar">L</span>
+                  <div class="gh-comment__main">
+                    <div class="gh-comment__head">
+                      <span class="gh-comment__author">linus</span>
+                      <span class="gh-comment__time">2h ago</span>
+                    </div>
+                    <div class="gh-comment__body">For reference, GitKraken caps at a handful of lanes and folds the rest — feels right for our row height too.</div>
+                  </div>
+                </div>
+
+                <div class="gh-comment">
+                  <span class="gh-comment__avatar">A</span>
+                  <div class="gh-comment__main">
+                    <div class="gh-comment__head">
+                      <span class="gh-comment__author">ada</span>
+                      <span class="gh-comment__time">1h ago</span>
+                    </div>
+                    <div class="gh-comment__body">Agreed — cap at 6 (matches our <span class="mono">--lane-1…6</span> palette) and fold overflow into the last lane. I'll push a patch.</div>
+                  </div>
+                </div>
+
+                <div class="gh-reply">
+                  <div class="field">
+                    <label class="field__label" for="gh-reply">Add a comment</label>
+                    <textarea class="input" id="gh-reply" rows="3" placeholder="Leave a comment…"></textarea>
+                  </div>
+                  <div class="gh-reply__actions">
+                    <button class="btn btn--ghost btn--sm">Close issue</button>
+                    <button class="btn btn--primary btn--sm">Comment</button>
+                  </div>
+                </div>
+              </div>
+            </div></div>
+
+          </div>
+        </section>
+
+        <section class="sg-section">
+          <span class="eyebrow">GitHub cockpit</span>
+          <h2>Issues list &amp; filter strip (.gh-filter)</h2>
+          <p class="sg-note">A <span class="mono">.gh-filter</span> tab strip (Assigned / Mentions / Created / All) reuses the segmented tab look, then a <span class="mono">.gh-list</span> of issues. Each row reuses the reason chip as a state/kind marker, with repo, number and time.</p>
+          <div class="panel"><div class="panel__body stack" style="padding:var(--space-4)">
+            <div class="cluster" style="justify-content:space-between">
+              <div class="gh-filter" role="tablist" aria-label="Issue filter">
+                <button class="gh-filter__tab is-active" role="tab" aria-selected="true">Assigned <span class="gh-filter__count">3</span></button>
+                <button class="gh-filter__tab" role="tab" aria-selected="false">Mentions</button>
+                <button class="gh-filter__tab" role="tab" aria-selected="false">Created</button>
+                <button class="gh-filter__tab" role="tab" aria-selected="false">All</button>
+              </div>
+              <select class="select" style="max-width:140px" aria-label="State">
+                <option>Open</option>
+                <option>Closed</option>
+              </select>
+            </div>
+            <div class="gh-list" role="list">
+              <button class="gh-list__row is-unread" role="listitem">
+                <span class="gh-list__reason gh-list__reason--assign">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9 12h6"/></svg>
+                  Open
+                </span>
+                <span class="gh-list__body">
+                  <span class="gh-list__title">Crash when opening a bare repository</span>
+                  <span class="gh-list__repo">acme/webgate #318 · 2 comments</span>
+                </span>
+                <span class="gh-list__time">5h</span>
+              </button>
+              <button class="gh-list__row" role="listitem">
+                <span class="gh-list__reason gh-list__reason--review">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9 12h6"/></svg>
+                  Open
+                </span>
+                <span class="gh-list__body">
+                  <span class="gh-list__title">Cap lane count at 6 and fold overflow</span>
+                  <span class="gh-list__repo">you/webgate #142 · 4 comments</span>
+                </span>
+                <span class="gh-list__time">2h</span>
+              </button>
+              <button class="gh-list__row" role="listitem">
+                <span class="gh-list__reason gh-list__reason--comment">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  Closed
+                </span>
+                <span class="gh-list__body">
+                  <span class="gh-list__title">tokens: add lane palette</span>
+                  <span class="gh-list__repo">you/webgate #138 · 1 comment</span>
+                </span>
+                <span class="gh-list__time">2d</span>
+              </button>
+            </div>
+          </div></div>
+        </section>
+
         <!-- ===== Class vocabulary ===== -->
         <section class="sg-section">
           <span class="eyebrow">Reference</span>
@@ -1401,6 +1608,15 @@ From github.com:you/webgate
             <div><code>.filter</code> __icon __input</div>
             <div><code>.drift</code> __ahead __behind --clean</div>
             <div><code>.shortcuts</code> __header __title __body __row __key __act</div>
+            <div><code>.appnav</code> __brand __tab(.is-active [disabled]) __badge</div>
+            <div><code>.gh-layout</code> (list | detail grid)</div>
+            <div><code>.gh-filter</code> __tab(.is-active) __count</div>
+            <div><code>.gh-list</code> __row(.is-unread .is-selected) __body</div>
+            <div><code>.gh-list__reason--</code> mention assign review comment</div>
+            <div><code>.gh-list__</code> title repo time</div>
+            <div><code>.gh-detail</code> __header __title __num __meta __author __labels __body</div>
+            <div><code>.gh-comment</code> __avatar __main __head __author __time __body</div>
+            <div><code>.gh-reply</code> __actions</div>
           </div></div>
         </section>
 

@@ -167,6 +167,28 @@
        .shortcuts__header / __title / __body
        .shortcuts__row / __key / __act
 
+   GitHub cockpit (the second tool)
+     .appnav                  slim top app-tab bar above the whole UI
+       .appnav__brand         app title / logo cluster (left)
+       .appnav__tab           one top tab (.is-active, [disabled] for "AI")
+       .appnav__badge         unread count pill carried on a tab
+     .gh-layout               two-pane GitHub grid (list | detail)
+     .gh-filter               issue filter tab strip (Assigned/Mentions/…)
+       .gh-filter__tab        one filter tab (.is-active); __count chip
+     .gh-list                 notification / issue rows
+       .gh-list__row          one row (.is-unread emphasis, .is-selected)
+       .gh-list__reason       reason chip (--mention --assign --review --comment)
+       .gh-list__body         title + repo stack (grows)
+       .gh-list__title / __repo / __time
+     .gh-detail               issue / PR detail view
+       .gh-detail__header / __title / __num / __meta / __author
+       .gh-detail__labels     label chip row (chips reuse .badge)
+       .gh-detail__body       issue body copy
+     .gh-comment              one comment-thread item
+       .gh-comment__avatar / __main / __head / __author / __time / __body
+     .gh-reply                reply box (reuse .field / .input / .btn)
+       .gh-reply__actions
+
    Utilities
      .text-muted .text-secondary .mono .sr-only .truncate
    ========================================================================== */
@@ -2197,6 +2219,295 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; min-he
 @media (max-width: 640px) {
   .shortcuts__body { grid-template-columns: 1fr; }
 }
+
+/* ===========================================================================
+   16k. GitHub cockpit — top app-nav + notifications / issues / detail
+   --------------------------------------------------------------------------
+   The second tool. .appnav is a slim tab bar that sits above the whole shell
+   (Git / GitHub / AI). The GitHub view is a two-pane .gh-layout: a list panel
+   (notifications or issues, with a .gh-filter strip) on the left and a
+   .gh-detail panel (issue body + .gh-comment thread + .gh-reply box) on the
+   right. Built entirely on existing tokens; chips reuse .badge.
+   =========================================================================== */
+
+/* ---- App nav (top tab bar) ------------------------------------------- */
+.appnav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  height: var(--appnav-height);
+  padding-inline: var(--space-3);
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.appnav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-right: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.appnav__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.appnav__tab svg { width: 15px; height: 15px; flex: 0 0 auto; }
+/* Active-tab underline aligned to the appnav's bottom edge. */
+.appnav__tab::after {
+  content: "";
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: -1px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.appnav__tab:hover { color: var(--text-primary); }
+.appnav__tab.is-active { color: var(--text-primary); }
+.appnav__tab.is-active::after { background: var(--accent); }
+.appnav__tab:disabled,
+.appnav__tab[disabled],
+.appnav__tab[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+/* Unread count pill carried on a tab. */
+.appnav__badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  color: var(--text-on-accent);
+  background: var(--accent-solid);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-edge);
+}
+
+/* ---- Two-pane layout (list | detail) --------------------------------- */
+.gh-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 860px) { .gh-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- Filter tab strip (Assigned / Mentions / Created / All) ---------- */
+.gh-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.gh-filter__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.gh-filter__tab:hover,
+.gh-filter__tab:focus-visible { color: var(--text-primary); background: var(--surface-raised); }
+.gh-filter__tab.is-active {
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-sm), var(--shadow-edge);
+}
+.gh-filter__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+.gh-filter__tab.is-active .gh-filter__count { color: var(--accent); }
+
+/* ---- Notification / issue list --------------------------------------- */
+.gh-list { display: flex; flex-direction: column; }
+
+.gh-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.gh-list__row:last-child { border-bottom: 0; }
+.gh-list__row:hover,
+.gh-list__row:focus-visible { background: var(--surface-raised); }
+.gh-list__row.is-selected { background: var(--accent-subtle); }
+/* Unread: an accent rail (inset, no layout shift) + a brighter title. */
+.gh-list__row.is-unread { box-shadow: inset 2px 0 0 var(--accent); }
+.gh-list__row.is-unread .gh-list__title { color: var(--text-primary); font-weight: var(--weight-semibold); }
+
+/* Reason chip — tint carries the kind; tiny leading icon. */
+.gh-list__reason {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-transform: capitalize;
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+}
+.gh-list__reason svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.gh-list__reason--mention { color: var(--accent);  background: var(--accent-subtle);  border-color: transparent; }
+.gh-list__reason--assign  { color: var(--success); background: var(--success-subtle); border-color: var(--success-border); }
+.gh-list__reason--review  { color: var(--warning); background: var(--warning-subtle); border-color: var(--warning-border); }
+.gh-list__reason--comment { color: var(--text-secondary); background: var(--surface-raised); border-color: var(--border); }
+
+.gh-list__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gh-list__title {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-list__row:hover .gh-list__title { color: var(--text-primary); }
+.gh-list__repo {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-list__time { flex: 0 0 auto; font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; }
+
+/* ---- Issue / PR detail ----------------------------------------------- */
+.gh-detail { display: flex; flex-direction: column; min-width: 0; }
+
+.gh-detail__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.gh-detail__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  color: var(--text-primary);
+}
+.gh-detail__num { color: var(--text-muted); font-weight: var(--weight-regular); }
+.gh-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.gh-detail__author { color: var(--text-secondary); }
+.gh-detail__author .mono { color: var(--text-primary); }
+.gh-detail__labels { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+
+.gh-detail__body {
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- Comment thread item --------------------------------------------- */
+.gh-comment {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+.gh-comment__avatar {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-on-accent);
+  background: linear-gradient(150deg, var(--accent-hover), var(--accent-solid));
+  box-shadow: var(--shadow-sm), var(--shadow-edge);
+}
+.gh-comment__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.gh-comment__head { display: flex; align-items: baseline; gap: var(--space-2); }
+.gh-comment__author { font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--text-primary); }
+.gh-comment__time { font-size: var(--text-xs); color: var(--text-muted); }
+.gh-comment__body {
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- Reply box ------------------------------------------------------- */
+.gh-reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.gh-reply__actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 
 /* ===========================================================================
    17. Utilities

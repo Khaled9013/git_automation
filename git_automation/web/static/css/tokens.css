@@ -159,6 +159,7 @@
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ---- Layout constants ----------------------------------------------- */
+  --appnav-height: 44px;     /* slim top app-tab bar (Git / GitHub / AI)    */
   --topbar-height: 56px;
   --content-max:   980px;
 
