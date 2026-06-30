@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from git_automation.core.errors import GitAutomationError
 
-from . import fs, gitops, identity, merge, pr, repo, stash, terminal, watch
+from . import fs, github, gitops, identity, merge, pr, repo, stash, terminal, watch
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(identity.router)
@@ -19,6 +19,7 @@ api_router.include_router(stash.router)
 api_router.include_router(pr.router)
 api_router.include_router(terminal.router)
 api_router.include_router(watch.router)
+api_router.include_router(github.router)
 
 
 def register_error_handlers(app: FastAPI) -> None:
