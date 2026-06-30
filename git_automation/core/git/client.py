@@ -280,13 +280,21 @@ async def get_changes(path: str) -> Changes:
     Returns:
         A :class:`Changes` snapshot parsed from ``git status --porcelain``.
         ``status`` is the git short code (M/A/D/R/C/U).
+
+    Notes:
+        Porcelain v1 is leading-column significant: a line is ``XY<space>path``
+        where ``X`` is the index (staged) status and ``Y`` the worktree
+        (unstaged) status. The raw, *unstripped* stdout is parsed here -- never
+        :attr:`CommandResult.output`, which is ``.strip()``-ped. Stripping would
+        drop the leading space of an unstaged-only change (e.g. `` M f.txt`` ->
+        ``M f.txt``), misreading it as a staged ``M`` with a mangled path.
     """
     cwd = validate_repo_path(path)
-    result = await run_git(["status", "--porcelain"], cwd=cwd)
+    result = await process.run_process(["git", "status", "--porcelain"], cwd=cwd)
     staged: list[FileChange] = []
     unstaged: list[FileChange] = []
     untracked: list[str] = []
-    for line in result.output.splitlines():
+    for line in result.stdout.splitlines():
         if len(line) < 3:
             continue
         index_status, worktree_status, entry = line[0], line[1], line[3:]
@@ -322,6 +330,49 @@ async def discard(path: str, files: list[str]) -> CommandResult:
     """
     cwd = validate_repo_path(path)
     return await run_git(["restore", "--", *files], cwd=cwd)
+
+
+async def delete_files(path: str, files: list[str]) -> CommandResult:
+    """Delete ``files`` from the working tree of the repository at ``path``.
+
+    Tracked files are removed with ``git rm -f`` (which also stages the
+    deletion); untracked files are unlinked from disk. Mixed lists are handled
+    in a single call. Every path is confined to the worktree (outside ``.git``)
+    via :func:`_resolve_worktree_file`, so traversal/absolute paths are rejected.
+
+    Destructive: the working-tree copy is removed. The UI confirms first.
+
+    Args:
+        path: Path to a local repository.
+        files: Repo-relative paths to delete (tracked and/or untracked).
+
+    Returns:
+        A :class:`CommandResult` whose ``output`` combines git's output for the
+        tracked deletions; ``ok`` is False if the ``git rm`` step failed.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if any path escapes the
+            worktree or enters ``.git``.
+    """
+    cwd = validate_repo_path(path)
+    resolved = {file: _resolve_worktree_file(cwd, file) for file in files}
+    tracked: list[str] = []
+    untracked: list[str] = []
+    for file in files:
+        check = await run_git(["ls-files", "--error-unmatch", "--", file], cwd=cwd)
+        (tracked if check.ok else untracked).append(file)
+    outputs: list[str] = []
+    ok = True
+    if tracked:
+        removed = await run_git(["rm", "-f", "--", *tracked], cwd=cwd)
+        ok = removed.ok
+        if removed.output:
+            outputs.append(removed.output)
+    for file in untracked:
+        target = resolved[file]
+        if target.is_file() or target.is_symlink():
+            target.unlink()
+    return CommandResult(ok=ok, output="\n".join(outputs))
 
 
 async def commit(path: str, message: str) -> CommandResult:
@@ -888,6 +939,7 @@ async def stash(
     path: str,
     message: str | None = None,
     include_untracked: bool = False,
+    files: list[str] | None = None,
 ) -> CommandResult:
     """Save the working-tree changes onto the stash stack.
 
@@ -895,6 +947,13 @@ async def stash(
         path: Path to a local repository.
         message: Optional stash label.
         include_untracked: When True, also stash untracked files (``-u``).
+        files: When given, stash only these repo-relative paths
+            (``git stash push -- <files>``), leaving other changes in the
+            working tree. Each path is confined via :func:`_resolve_worktree_file`.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if any path in ``files``
+            escapes the worktree or enters ``.git``.
     """
     cwd = validate_repo_path(path)
     args = ["stash", "push"]
@@ -902,6 +961,10 @@ async def stash(
         args.append("--include-untracked")
     if message:
         args += ["-m", message]
+    if files:
+        for file in files:
+            _resolve_worktree_file(cwd, file)
+        args += ["--", *files]
     return await run_git(args, cwd=cwd)
 
 

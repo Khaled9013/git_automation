@@ -73,6 +73,143 @@ async def test_get_changes_clean_repo_is_empty(tmp_path: Path) -> None:
     assert changes.untracked == []
 
 
+async def test_get_changes_unstaged_only_is_not_phantom_staged(tmp_path: Path) -> None:
+    """Regression: a single modified-unstaged file must not appear as staged.
+
+    Porcelain emits `` M f.txt`` (leading space = empty index column). Parsing
+    the stripped output dropped that space, misreading it as a staged ``M`` with
+    a mangled ``.txt`` path. The raw stdout must be parsed instead.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "f.txt", "v1")
+    (repo / "f.txt").write_text("v2")  # modified, unstaged
+
+    changes = await client.get_changes(str(repo))
+
+    assert changes.staged == []
+    assert [(c.path, c.status) for c in changes.unstaged] == [("f.txt", "M")]
+    assert changes.untracked == []
+
+
+async def test_get_changes_staged_only(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "f.txt", "v1")
+    (repo / "f.txt").write_text("v2")
+    _git(repo, "add", "f.txt")
+
+    changes = await client.get_changes(str(repo))
+
+    assert [(c.path, c.status) for c in changes.staged] == [("f.txt", "M")]
+    assert changes.unstaged == []
+    assert changes.untracked == []
+
+
+async def test_get_changes_partial_staging_same_file(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "f.txt", "v1")
+    (repo / "f.txt").write_text("v2")
+    _git(repo, "add", "f.txt")
+    (repo / "f.txt").write_text("v3")  # further worktree edit
+
+    changes = await client.get_changes(str(repo))
+
+    assert [(c.path, c.status) for c in changes.staged] == [("f.txt", "M")]
+    assert [(c.path, c.status) for c in changes.unstaged] == [("f.txt", "M")]
+    assert changes.untracked == []
+
+
+async def test_get_changes_untracked(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo)
+    (repo / "new.txt").write_text("x")
+
+    changes = await client.get_changes(str(repo))
+
+    assert changes.staged == []
+    assert changes.unstaged == []
+    assert changes.untracked == ["new.txt"]
+
+
+async def test_get_changes_preserves_leading_space_sensitive_name(tmp_path: Path) -> None:
+    """A filename whose first char is a digit/space-adjacent must survive parsing."""
+    repo = _init_repo(tmp_path / "repo")
+    name = "0leading.txt"
+    _commit(repo, name, "v1")
+    (repo / name).write_text("v2")
+
+    changes = await client.get_changes(str(repo))
+
+    assert changes.staged == []
+    assert [(c.path, c.status) for c in changes.unstaged] == [(name, "M")]
+
+
+async def test_get_changes_rename(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "old.txt", "content")
+    _git(repo, "mv", "old.txt", "new.txt")  # staged rename
+
+    changes = await client.get_changes(str(repo))
+
+    assert [(c.path, c.status) for c in changes.staged] == [("new.txt", "R")]
+    assert changes.unstaged == []
+    assert changes.untracked == []
+
+
+# --- delete_files ---------------------------------------------------------
+
+
+async def test_delete_files_tracked(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "tracked.txt", "v1")
+
+    result = await client.delete_files(str(repo), ["tracked.txt"])
+
+    assert result.ok is True
+    assert not (repo / "tracked.txt").exists()
+    # ``git rm`` stages the deletion.
+    assert [(c.path, c.status) for c in (await client.get_changes(str(repo))).staged] == [
+        ("tracked.txt", "D")
+    ]
+
+
+async def test_delete_files_untracked(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo)
+    (repo / "scratch.txt").write_text("temp")
+
+    result = await client.delete_files(str(repo), ["scratch.txt"])
+
+    assert result.ok is True
+    assert not (repo / "scratch.txt").exists()
+    assert (await client.get_changes(str(repo))).untracked == []
+
+
+async def test_delete_files_mixed(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "tracked.txt", "v1")
+    (repo / "scratch.txt").write_text("temp")
+
+    result = await client.delete_files(str(repo), ["tracked.txt", "scratch.txt"])
+
+    assert result.ok is True
+    assert not (repo / "tracked.txt").exists()
+    assert not (repo / "scratch.txt").exists()
+
+
+async def test_delete_files_rejects_traversal(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo)
+    secret = tmp_path / "OUTSIDE.txt"
+    secret.write_text("secret")
+
+    with pytest.raises(GitAutomationError) as exc:
+        await client.delete_files(str(repo), ["../OUTSIDE.txt"])
+
+    assert exc.value.code == "invalid_argument"
+    assert exc.value.status_code == 400
+    assert secret.exists()  # untouched
+
+
 async def test_stage_then_unstage(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")
     _commit(repo)

@@ -16,6 +16,7 @@ from git_automation.core.git.client import (
     commit,
     create_branch,
     delete_branch,
+    delete_files,
     discard,
     get_changes,
     get_commit_detail,
@@ -153,6 +154,12 @@ async def git_unstage(body: FilesRequest) -> CommandResult:
 async def git_discard(body: FilesRequest) -> CommandResult:
     """Discard working-tree changes to the given files (destructive)."""
     return await discard(body.path, body.files)
+
+
+@router.post("/git/delete")
+async def git_delete(body: FilesRequest) -> CommandResult:
+    """Delete the given working-tree files (tracked via ``git rm``; destructive)."""
+    return await delete_files(body.path, body.files)
 
 
 @router.post("/git/commit")

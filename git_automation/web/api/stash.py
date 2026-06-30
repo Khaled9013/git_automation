@@ -25,6 +25,7 @@ class StashRequest(BaseModel):
     path: str
     message: str | None = None
     include_untracked: bool = False
+    files: list[str] | None = None
 
 
 class StashPopRequest(BaseModel):
@@ -44,7 +45,7 @@ class StashIndexRequest(BaseModel):
 @router.post("/git/stash")
 async def git_stash(body: StashRequest) -> CommandResult:
     """Save the working-tree changes onto the stash stack."""
-    return await stash(body.path, body.message, body.include_untracked)
+    return await stash(body.path, body.message, body.include_untracked, body.files)
 
 
 @router.post("/git/stash/pop")

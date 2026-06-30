@@ -70,6 +70,35 @@ def test_unstage_and_discard(client: TestClient, tmp_path: Path) -> None:
     assert (repo / "f.txt").read_text() == "original"
 
 
+def test_delete_endpoint_tracked_and_untracked(client: TestClient, tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "tracked.txt", "v1")
+    (repo / "scratch.txt").write_text("temp")
+
+    resp = client.post(
+        "/api/git/delete",
+        json={"path": str(repo), "files": ["tracked.txt", "scratch.txt"]},
+    )
+    assert resp.status_code == 200 and resp.json()["ok"] is True
+    assert not (repo / "tracked.txt").exists()
+    assert not (repo / "scratch.txt").exists()
+
+
+def test_delete_endpoint_rejects_traversal(client: TestClient, tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo)
+    secret = tmp_path / "OUTSIDE.txt"
+    secret.write_text("secret")
+
+    resp = client.post(
+        "/api/git/delete",
+        json={"path": str(repo), "files": ["../OUTSIDE.txt"]},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "invalid_argument"
+    assert secret.exists()
+
+
 def test_commit_empty_message_error_shape(client: TestClient, tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")
     _commit(repo)

@@ -104,6 +104,37 @@ async def test_stash_apply_keeps_entry_then_drop(tmp_path: Path) -> None:
     assert "b" in remaining[0].message
 
 
+async def test_stash_specific_file_leaves_other_changes(tmp_path: Path) -> None:
+    repo = _seeded(tmp_path / "repo")
+    (repo / "g.txt").write_text("second\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "add g")
+
+    (repo / "f.txt").write_text("dirty-f\n")
+    (repo / "g.txt").write_text("dirty-g\n")
+
+    saved = await client.stash(str(repo), message="just-f", files=["f.txt"])
+    assert saved.ok is True
+    # f.txt reverted; g.txt change remains in the working tree.
+    assert (repo / "f.txt").read_text() == "base\n"
+    assert (repo / "g.txt").read_text() == "dirty-g\n"
+
+    await client.stash_pop(str(repo))
+    assert (repo / "f.txt").read_text() == "dirty-f\n"
+
+
+async def test_stash_files_rejects_traversal(tmp_path: Path) -> None:
+    repo = _seeded(tmp_path / "repo")
+    (repo / "f.txt").write_text("dirty\n")
+    from git_automation.core.errors import GitAutomationError
+
+    with pytest.raises(GitAutomationError) as exc:
+        await client.stash(str(repo), files=["../OUTSIDE.txt"])
+    assert exc.value.code == "invalid_argument"
+    # Working tree untouched by a rejected request.
+    assert (repo / "f.txt").read_text() == "dirty\n"
+
+
 # --- API ------------------------------------------------------------------
 
 
@@ -118,6 +149,20 @@ def test_stash_endpoints_round_trip(api: TestClient, tmp_path: Path) -> None:
     pop = api.post("/api/git/stash/pop", json={"path": str(repo)})
     assert pop.status_code == 200 and pop.json()["ok"] is True
     assert (repo / "f.txt").read_text() == "dirty\n"
+
+
+def test_stash_endpoint_accepts_files(api: TestClient, tmp_path: Path) -> None:
+    repo = _seeded(tmp_path / "repo")
+    (repo / "g.txt").write_text("second\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "add g")
+    (repo / "f.txt").write_text("dirty-f\n")
+    (repo / "g.txt").write_text("dirty-g\n")
+
+    save = api.post("/api/git/stash", json={"path": str(repo), "files": ["f.txt"]})
+    assert save.status_code == 200 and save.json()["ok"] is True
+    assert (repo / "f.txt").read_text() == "base\n"
+    assert (repo / "g.txt").read_text() == "dirty-g\n"
 
 
 def test_stash_apply_and_drop_endpoints(api: TestClient, tmp_path: Path) -> None:
