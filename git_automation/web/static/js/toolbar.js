@@ -36,6 +36,10 @@ export function initToolbar(root, handlers = {}) {
   const btnStash = $('tb-stash');
   const btnPop = $('tb-pop');
   const btnTerminal = $('tb-terminal');
+  const drift = $('tb-drift');
+
+  const CHECK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg>';
 
   const remoteMenu = createContextMenu();
 
@@ -169,6 +173,40 @@ export function initToolbar(root, handlers = {}) {
     setTerminalActive(active) {
       terminalActive = !!active;
       if (btnTerminal) btnTerminal.classList.toggle('is-active', terminalActive);
+    },
+    /**
+     * Render the ahead/behind drift badge for the current branch from a repo
+     * status snapshot. Hidden when there is no upstream to compare against.
+     */
+    setDrift(status) {
+      if (!drift) return;
+      const upstream = status && status.upstream;
+      if (!upstream) {
+        drift.hidden = true;
+        drift.className = 'drift';
+        drift.replaceChildren();
+        drift.removeAttribute('title');
+        return;
+      }
+      const ahead = Number(status.ahead) || 0;
+      const behind = Number(status.behind) || 0;
+      const upstreamRef = `${upstream.remote}/${upstream.branch}`;
+      drift.hidden = false;
+      if (ahead === 0 && behind === 0) {
+        drift.className = 'drift drift--clean';
+        drift.title = `Up to date with ${upstreamRef}`;
+        drift.innerHTML = `${CHECK_ICON}Up to date`;
+        return;
+      }
+      drift.className = 'drift';
+      const parts = [];
+      if (ahead) parts.push(`${ahead} ahead`);
+      if (behind) parts.push(`${behind} behind`);
+      drift.title = `${parts.join(', ')} of ${upstreamRef}`;
+      let html = '';
+      if (ahead) html += `<span class="drift__ahead">↑${ahead}</span>`;
+      if (behind) html += `<span class="drift__behind">↓${behind}</span>`;
+      drift.innerHTML = html;
     },
   };
 }

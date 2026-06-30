@@ -55,24 +55,26 @@ function boot() {
   const refreshStatus = () => (repoRef ? repoRef.refreshStatus() : Promise.resolve());
 
   const commitDetail = initCommitDetail(commitDetailRoot, {
-    onSelectFile: (file) => {
+    onSelectFile: (file, sha) => {
       const p = getPath();
-      if (p) diff.show(p, file);
+      if (p) diff.show(p, file, { commit: sha });
     },
   });
 
   const changes = initChanges(changesRoot, {
     onSelectFile: (file, staged) => {
       const p = getPath();
-      if (p) diff.show(p, file, staged);
+      if (p) diff.show(p, file, { staged, onChanged: refresh });
     },
     refreshAll: refresh,
     refreshStatus,
   });
 
   // Switch the detail pane between a selected commit and the working tree (WIP).
+  let detailMode = 'commit';
   function setDetailMode(mode) {
     const wip = mode === 'wip';
+    detailMode = wip ? 'wip' : 'commit';
     commitDetailRoot.hidden = wip;
     changesRoot.hidden = !wip;
     diff.clear();
@@ -243,6 +245,26 @@ function boot() {
     }
   }
 
+  async function doRenameBranch(name) {
+    const newName = await promptDialog({
+      title: `Rename ${name}`,
+      label: 'New branch name',
+      placeholder: name,
+      confirmLabel: 'Rename',
+    });
+    if (!newName || newName === name) return;
+    await run('Rename branch', (p) => api.branchRename(p, name, newName), {
+      successTitle: 'Branch renamed', successMsg: `${name} → ${newName}`,
+    });
+  }
+
+  // Double-clicking a remote branch creates + checks out a local tracking branch.
+  function doTrackRemote(remoteRef) {
+    return run('Track remote', (p) => api.branchTrack(p, remoteRef), {
+      successTitle: 'Tracking branch created', successMsg: remoteRef,
+    });
+  }
+
   async function openPrFlow({ head = null } = {}) {
     const p = getPath();
     if (!p) return;
@@ -326,7 +348,7 @@ function boot() {
     const items = [
       { label: 'Checkout', icon: ICON.checkout, disabled: !!info.is_current, onSelect: () => doCheckout(checkoutName) },
       { label: 'Merge into current', icon: ICON.merge, disabled: !!info.is_current, onSelect: () => doMerge(info.name) },
-      { label: 'Rename', icon: ICON.rename, disabled: true },
+      { label: 'Rename', icon: ICON.rename, disabled: info.kind === 'remote', onSelect: () => doRenameBranch(info.name) },
       { label: 'Delete', icon: ICON.trash, danger: true, disabled: !!info.is_current || info.kind === 'remote', onSelect: () => doDeleteBranch(info.name) },
       { sep: true },
       { label: 'Create pull request…', icon: ICON.pr, onSelect: () => openPrFlow({ head: checkoutName }) },
@@ -354,6 +376,7 @@ function boot() {
   // --- Sidebar ---------------------------------------------------------------
   const sidebar = initSidebar($('sidebar'), {
     onCheckout: (ref) => doCheckout(ref),
+    onTrackRemote: (remoteRef) => doTrackRemote(remoteRef),
     onBranchMenu: (info, x, y) => contextMenu.open(x, y, branchMenuItems(info)),
     onStashMenu: (index, x, y) => contextMenu.open(x, y, stash.menuItems(index)),
   });
@@ -423,12 +446,210 @@ function boot() {
   // --- Undo / Redo (reflog) --------------------------------------------------
   const undo = initUndo({ getPath, refresh, undoBtn: $('tb-undo'), redoBtn: $('tb-redo') });
 
+  // --- Auto-refresh: file watcher + debounced panel refresh ------------------
+  let watchSocket = null;
+  let watchPath = null;
+  let watchTimer = null; // debounce timer
+  let reconnectTimer = null;
+  let reconnectDelay = 1000; // backoff seed (ms), capped in the close handler
+
+  // True while a dialog / menu / merge editor is up — auto-refresh stands down
+  // so it never wipes a half-typed message or steals focus mid-interaction.
+  function overlayOpen() {
+    if (document.querySelector('.modal-overlay.is-open')) return true;
+    const mer = $('merge-editor-root');
+    if (mer && mer.classList.contains('is-open')) return true;
+    if (contextMenu.isOpen()) return true;
+    return false;
+  }
+
+  // Re-fetch status, refresh badges + drift; cheap (no heavy panel reloads).
+  async function refreshStatusAndDrift() {
+    await refreshStatus();
+    const st = repoRef && repoRef.status();
+    if (st) toolbar.setDrift(st);
+  }
+
+  // The actual debounced refresh: working tree + status + graph + sidebar, and
+  // surface the merge editor if a merge just appeared.
+  async function doAutoRefresh() {
+    const p = getPath();
+    if (!p || overlayOpen()) return;
+    const savedMode = detailMode;
+    // If the user is typing in the changes panel (e.g. the commit message),
+    // skip rebuilding it so we don't steal focus — status/graph still refresh.
+    const typingInChanges =
+      isTextInput(document.activeElement) && changesRoot.contains(document.activeElement);
+    try {
+      await Promise.all([
+        typingInChanges ? Promise.resolve() : changes.refresh(),
+        refreshStatusAndDrift(),
+      ]);
+      const st = repoRef && repoRef.status();
+      await graph.render(p, { dirty: !!(st && st.dirty) });
+      // graph.render auto-selects HEAD (→ commit mode); restore WIP if we were there.
+      if (savedMode === 'wip') setDetailMode('wip');
+      sidebar.load(p);
+      undo.refreshState();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('auto-refresh failed', err);
+    }
+    await checkConflicts();
+  }
+
+  function scheduleAutoRefresh() {
+    clearTimeout(watchTimer);
+    watchTimer = setTimeout(doAutoRefresh, 250);
+  }
+
+  function teardownWatch() {
+    clearTimeout(watchTimer); watchTimer = null;
+    clearTimeout(reconnectTimer); reconnectTimer = null;
+    if (watchSocket) {
+      watchSocket.__intentionalClose = true; // suppress this socket's reconnect
+      try { watchSocket.close(); } catch { /* ignore */ }
+      watchSocket = null;
+    }
+  }
+
+  function connectWatch() {
+    const p = watchPath;
+    if (!p) return;
+    let socket;
+    try {
+      socket = new WebSocket(api.watchUrl(p));
+    } catch {
+      return; // cannot construct (e.g. bad URL) — give up quietly
+    }
+    watchSocket = socket;
+
+    socket.addEventListener('message', (ev) => {
+      let frame = null;
+      try { frame = JSON.parse(ev.data); } catch { return; }
+      if (frame && frame.type === 'change') scheduleAutoRefresh();
+    });
+    socket.addEventListener('open', () => { reconnectDelay = 1000; });
+    socket.addEventListener('close', () => {
+      if (socket.__intentionalClose) return; // we closed it on purpose
+      if (watchPath !== p) return; // repo switched away — let the new socket run
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+        connectWatch();
+      }, reconnectDelay);
+    });
+    socket.addEventListener('error', () => { try { socket.close(); } catch { /* ignore */ } });
+  }
+
+  // Open (or switch) the watcher to `path`, tearing down any previous socket.
+  function startWatching(path) {
+    if (watchPath === path && watchSocket && watchSocket.readyState <= 1) return;
+    teardownWatch();
+    watchPath = path;
+    reconnectDelay = 1000;
+    connectWatch();
+  }
+
+  // --- Periodic light status poll (keeps the drift badge fresh) --------------
+  let statusPollTimer = null;
+  function startStatusPoll() {
+    if (statusPollTimer) return; // a single shared interval is enough
+    statusPollTimer = setInterval(() => {
+      if (!getPath() || overlayOpen()) return;
+      refreshStatusAndDrift().catch(() => { /* non-fatal */ });
+    }, 60000);
+  }
+
+  // --- Commit filter ---------------------------------------------------------
+  const filterInput = $('graph-filter-input');
+  if (filterInput) {
+    filterInput.addEventListener('input', () => graph.setFilter(filterInput.value));
+  }
+
+  // --- Keyboard shortcuts + help overlay -------------------------------------
+  const shortcutsOverlay = $('shortcuts-overlay');
+  const shortcutsClose = $('shortcuts-close');
+  const isShortcutsOpen = () => !!(shortcutsOverlay && shortcutsOverlay.classList.contains('is-open'));
+  function toggleShortcuts(force) {
+    if (!shortcutsOverlay) return;
+    const show = force == null ? !isShortcutsOpen() : !!force;
+    shortcutsOverlay.classList.toggle('is-open', show);
+  }
+  if (shortcutsClose) shortcutsClose.addEventListener('click', () => toggleShortcuts(false));
+  if (shortcutsOverlay) {
+    shortcutsOverlay.addEventListener('mousedown', (e) => {
+      if (e.target === shortcutsOverlay) toggleShortcuts(false);
+    });
+  }
+
+  function isTextInput(target) {
+    if (!target) return false;
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+  function clickToolbar(id) {
+    const b = $(id);
+    if (b && !b.disabled) b.click();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const key = e.key;
+
+    // Ctrl/Cmd+Enter → commit, even from inside the message textarea.
+    if ((e.ctrlKey || e.metaKey) && key === 'Enter') {
+      if (detailMode === 'wip') { e.preventDefault(); changes.triggerCommit(); }
+      return;
+    }
+
+    // Escape → close the help overlay (modals + context menus handle their own).
+    if (key === 'Escape') {
+      if (isShortcutsOpen()) { e.preventDefault(); toggleShortcuts(false); }
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey || e.altKey) return; // leave browser combos alone
+    if (isTextInput(e.target)) return; // typing — ignore single-key shortcuts
+    if (overlayOpen() && !isShortcutsOpen()) return; // a dialog/menu owns the keys
+
+    switch (key) {
+      case '/':
+        e.preventDefault();
+        if (filterInput) filterInput.focus();
+        break;
+      case '?':
+        e.preventDefault();
+        toggleShortcuts();
+        break;
+      case 's':
+        if (detailMode === 'wip') { e.preventDefault(); changes.stageSelected(); }
+        break;
+      case 'u':
+        if (detailMode === 'wip') { e.preventDefault(); changes.unstageSelected(); }
+        break;
+      case 'c':
+        if (detailMode === 'wip') { e.preventDefault(); changes.focusMessage(); }
+        break;
+      case 'p':
+        e.preventDefault();
+        clickToolbar('tb-push');
+        break;
+      case 'f':
+        e.preventDefault();
+        clickToolbar('tb-fetch');
+        break;
+      default:
+        break;
+    }
+  });
+
   // --- Repo orchestration ----------------------------------------------------
   const repo = initRepo({
     onRepoLoaded(status) {
       const path = status.path;
       toolbar.setRepo(basename(path));
       toolbar.setRemoteContext(status);
+      toolbar.setDrift(status);
       toolbar.setEnabled(true);
       setDetailMode('commit');
       branches.load(path);
@@ -436,6 +657,9 @@ function boot() {
       changes.load(path, status.current_branch);
       graph.render(path, { dirty: !!status.dirty });
       undo.refreshState();
+      // (Re)connect the file watcher + periodic status poll for this repo.
+      startWatching(path);
+      startStatusPoll();
     },
   });
   repoRef = repo;

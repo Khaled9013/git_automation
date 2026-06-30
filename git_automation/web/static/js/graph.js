@@ -302,11 +302,42 @@ export function createGraph(containerEl, options = {}) {
 
   let commits = [];
   let selectedRow = null;
+  let filterQuery = '';
 
   function clear() {
     commits = [];
     selectedRow = null;
     containerEl.replaceChildren();
+  }
+
+  // ---- Client-side filter (message / author / short-sha) -------------------
+
+  function rowMatches(commit, q) {
+    if (!q) return true;
+    const hay = [
+      commit.subject || '',
+      commit.author || '',
+      commit.short || '',
+      commit.sha || '',
+    ].join(' ').toLowerCase();
+    return hay.includes(q);
+  }
+
+  // Hide non-matching rows; the WIP row always stays visible.
+  function applyFilter() {
+    const q = filterQuery.trim().toLowerCase();
+    const rows = containerEl.querySelectorAll('.graph__row');
+    rows.forEach((row) => {
+      if (row.dataset.wip === '1') return;
+      const c = commitFor(row);
+      row.hidden = !!c && !rowMatches(c, q);
+    });
+  }
+
+  /** Set the active filter query and (re)apply it to the rendered rows. */
+  function setFilter(q) {
+    filterQuery = q || '';
+    applyFilter();
   }
 
   function markSelected(row) {
@@ -389,7 +420,10 @@ export function createGraph(containerEl, options = {}) {
       `.graph__row[data-i="${headIdx >= 0 ? headIdx : 0}"]`,
     );
     if (startRow) select(startRow);
+
+    // Re-apply any active filter to the freshly-rendered rows.
+    applyFilter();
   }
 
-  return { render, clear };
+  return { render, clear, setFilter };
 }

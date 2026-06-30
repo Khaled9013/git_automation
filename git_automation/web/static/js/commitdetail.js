@@ -1,8 +1,9 @@
 // commitdetail.js — the right-pane commit inspector. Single-clicking a commit in
 // the graph calls `show(path, sha)`, which loads GET /api/repo/commit and renders
 // the design-system `.commit-detail` block (subject / sha / author / date / body)
-// plus a `.file-list` of changed files. Clicking a file emits `onSelectFile` so
-// the app can render its diff (reusing diff.js).
+// plus a `.file-list` of changed files. Clicking a file emits
+// `onSelectFile(file, sha)` so the app can render that COMMIT's historical diff
+// via diff.js — e.g. `diff.show(path, file, { commit: sha })` (read-only).
 
 import * as api from './api.js';
 import { el, toast } from './ui.js';
@@ -26,11 +27,12 @@ function pathParts(p) {
 /**
  * Initialise the commit-detail panel.
  * @param {HTMLElement} root
- * @param {{ onSelectFile?:(file:string)=>void }} cbs
+ * @param {{ onSelectFile?:(file:string, sha:string)=>void }} cbs
  * @returns {{ show(path:string, sha:string):Promise<void>, clear():void }}
  */
 export function initCommitDetail(root, { onSelectFile } = {}) {
   let selectedRow = null;
+  let currentSha = null;
 
   function metaRow(label, value, mono = false) {
     return el('div', { class: 'commit-detail__row' }, [
@@ -61,7 +63,7 @@ export function initCommitDetail(root, { onSelectFile } = {}) {
       if (selectedRow) selectedRow.classList.remove('is-selected');
       selectedRow = row;
       row.classList.add('is-selected');
-      if (onSelectFile) onSelectFile(f.path);
+      if (onSelectFile) onSelectFile(f.path, currentSha);
     };
     row.addEventListener('click', pick);
     row.addEventListener('keydown', (e) => {
@@ -109,6 +111,7 @@ export function initCommitDetail(root, { onSelectFile } = {}) {
 
   async function show(path, sha) {
     if (!path || !sha) return;
+    currentSha = sha;
     root.replaceChildren(el('div', { class: 'text-muted', text: 'Loading commit…' }));
     try {
       const detail = await api.getCommit(path, sha);
@@ -121,6 +124,7 @@ export function initCommitDetail(root, { onSelectFile } = {}) {
 
   function clear() {
     selectedRow = null;
+    currentSha = null;
     root.replaceChildren();
   }
 

@@ -55,6 +55,7 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
   let anchorKey = null; // range-selection anchor
   let flatRows = []; // rows in rendered order: { key, file, staged, untracked }
   let message = '';
+  let amend = false; // when true, Commit amends HEAD instead of creating a new commit
   let busy = false;
 
   const contextMenu = createContextMenu();
@@ -264,32 +265,81 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
       class: 'input',
       attrs: { rows: '3', placeholder: 'Commit message — summary on the first line', 'aria-label': 'Commit message' },
     });
+    commitTextarea = textarea;
     textarea.value = message;
     textarea.addEventListener('input', () => {
       message = textarea.value;
-      btn.disabled = !canCommit();
+      syncButton();
     });
 
+    // Amend toggle — when checked, Commit amends HEAD via api.amendCommit and the
+    // message box is prefilled with the last commit's subject (if empty).
+    const amendCheckbox = el('input', { attrs: { type: 'checkbox', 'aria-label': 'Amend last commit' } });
+    amendCheckbox.checked = amend;
+    amendCheckbox.addEventListener('change', () => {
+      amend = amendCheckbox.checked;
+      if (amend) prefillAmendMessage();
+      syncButton();
+    });
+    const amendToggle = el('label', { class: 'cluster text-muted', attrs: { title: 'Amend the most recent commit instead of creating a new one' } }, [
+      amendCheckbox,
+      el('span', { text: 'Amend last commit' }),
+    ]);
+
     const btn = el('button', { class: 'btn btn--primary', attrs: { type: 'button' } });
-    btn.appendChild(document.createTextNode('Commit'));
-    if (branch) {
-      btn.appendChild(document.createTextNode(' to '));
-      btn.appendChild(el('span', { class: 'mono', text: branch }));
-    }
-    btn.disabled = !canCommit();
     btn.addEventListener('click', doCommit);
 
     function canCommit() {
-      return !busy && message.trim().length > 0 && stagedCount > 0;
+      if (busy) return false;
+      // Amend can reword HEAD with no staged changes, or fold staged changes in.
+      if (amend) return message.trim().length > 0 || stagedCount > 0;
+      return message.trim().length > 0 && stagedCount > 0;
     }
+
+    function syncButton() {
+      btn.replaceChildren();
+      btn.appendChild(document.createTextNode(amend ? 'Amend' : 'Commit'));
+      if (branch) {
+        btn.appendChild(document.createTextNode(' to '));
+        btn.appendChild(el('span', { class: 'mono', text: branch }));
+      }
+      btn.disabled = !canCommit();
+    }
+    syncButton();
+    commitSync = syncButton;
+
+    const statusText = amend
+      ? (stagedCount > 0 ? `Amending HEAD with ${stagedCount} staged file${stagedCount === 1 ? '' : 's'}` : 'Amending HEAD (message only)')
+      : `${stagedCount} file${stagedCount === 1 ? '' : 's'} staged`;
 
     return el('div', { class: 'commit-box' }, [
       textarea,
       el('div', { class: 'commit-box__actions' }, [
-        el('span', { class: 'text-muted', text: `${stagedCount} file${stagedCount === 1 ? '' : 's'} staged` }),
+        amendToggle,
+        el('span', { class: 'text-muted', text: statusText }),
         btn,
       ]),
     ]);
+  }
+
+  // Live handles to the current commit-box controls (rebuilt on each render).
+  let commitTextarea = null;
+  let commitSync = null;
+
+  // Prefill the message box with HEAD's subject when Amend is toggled on.
+  async function prefillAmendMessage() {
+    if (!path || message.trim()) return;
+    try {
+      const { commits } = await api.getGraph(path, 1);
+      const subject = commits && commits[0] && commits[0].subject;
+      if (subject && !message.trim()) {
+        message = subject;
+        if (commitTextarea) commitTextarea.value = subject;
+        if (commitSync) commitSync();
+      }
+    } catch {
+      /* non-fatal — leave the message box empty */
+    }
   }
 
   // ---- Operations -----------------------------------------------------------
@@ -366,18 +416,38 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
 
   async function doCommit() {
     const msg = message.trim();
-    if (!path || busy || !msg || (data.staged || []).length === 0) return;
+    const stagedCount = (data.staged || []).length;
+    if (!path || busy) return;
+    if (amend) {
+      if (!msg && stagedCount === 0) return;
+    } else if (!msg || stagedCount === 0) {
+      return;
+    }
     busy = true;
     try {
-      await api.commit(path, msg);
+      if (amend) {
+        const result = await api.amendCommit(path, msg || null);
+        if (result && result.ok === false) {
+          toast('error', 'Amend failed', result.output || 'git reported a failure.');
+          return;
+        }
+        toast('success', 'Commit amended', (msg || 'message unchanged').split('\n')[0]);
+      } else {
+        const result = await api.commit(path, msg);
+        if (result && result.ok === false) {
+          toast('error', 'Commit failed', result.output || 'git reported a failure.');
+          return;
+        }
+        toast('success', 'Commit created', msg.split('\n')[0]);
+      }
       message = '';
+      amend = false;
       selection = new Set();
       anchorKey = null;
-      toast('success', 'Commit created', msg.split('\n')[0]);
       if (refreshAll) await refreshAll();
       else await reloadSelf();
     } catch (err) {
-      toast('error', 'Commit failed', err.message);
+      toast('error', amend ? 'Amend failed' : 'Commit failed', err.message);
     } finally {
       busy = false;
     }
@@ -391,6 +461,7 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
     selection = new Set();
     anchorKey = null;
     message = '';
+    amend = false;
     await reloadSelf();
   }
 
@@ -398,5 +469,38 @@ export function initChanges(container, { onSelectFile, refreshAll, refreshStatus
     container.replaceChildren();
   }
 
-  return { load, clear };
+  // ---- Keyboard-shortcut entry points ---------------------------------------
+
+  /** Stage every currently-selected unstaged/untracked file. */
+  function stageSelected() {
+    const files = selectedRows().filter((r) => !r.staged).map((r) => r.file);
+    if (files.length) doFiles(api.stage, files, { reload: true });
+  }
+
+  /** Unstage every currently-selected staged file. */
+  function unstageSelected() {
+    const files = selectedRows().filter((r) => r.staged).map((r) => r.file);
+    if (files.length) doFiles(api.unstage, files, { reload: true });
+  }
+
+  /** Focus the commit-message box (the `c` shortcut). */
+  function focusMessage() {
+    if (commitTextarea) commitTextarea.focus();
+  }
+
+  /** Commit (or amend) the staged changes (the Ctrl/Cmd+Enter shortcut). */
+  function triggerCommit() {
+    return doCommit();
+  }
+
+  return {
+    load,
+    clear,
+    /** Reload change data in place, preserving the typed message and selection. */
+    refresh: reloadSelf,
+    stageSelected,
+    unstageSelected,
+    focusMessage,
+    triggerCommit,
+  };
 }

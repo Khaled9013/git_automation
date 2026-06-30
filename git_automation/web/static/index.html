@@ -65,6 +65,8 @@
           <span class="toolbar2__label" id="tb-remote-label">remote</span>
           <svg class="toolbar2__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
         </button>
+        <!-- Ahead/behind drift badge for the current branch → toolbar.js -->
+        <span class="drift" id="tb-drift" hidden></span>
       </div>
 
       <span class="toolbar2__sep"></span>
@@ -106,6 +108,10 @@
 
     <!-- ---------- Center: commit graph ---------- -->
     <div class="layout-3pane__center">
+      <div class="filter" id="graph-filter">
+        <svg class="filter__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="filter__input" id="graph-filter-input" type="search" placeholder="Filter commits&hellip;" aria-label="Filter commits" autocomplete="off" spellcheck="false" />
+      </div>
       <div class="graph" id="commit-graph" role="tree" aria-label="Commit graph">
         <div class="text-muted">Open a repository to view its history.</div>
       </div>
@@ -218,6 +224,30 @@
       <div class="modal__footer">
         <button class="btn btn--ghost" type="button" id="btn-skip-onboarding">Skip for now</button>
         <button class="btn btn--primary" type="button" id="btn-done-onboarding">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Keyboard shortcuts overlay ===================== -->
+  <div class="modal-overlay" id="shortcuts-overlay" role="presentation">
+    <div class="shortcuts" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+      <div class="shortcuts__header">
+        <h2 class="shortcuts__title">Keyboard shortcuts</h2>
+        <button class="btn btn--icon btn--sm" type="button" id="shortcuts-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="shortcuts__body">
+        <div class="shortcuts__row"><kbd class="shortcuts__key">s</kbd><span class="shortcuts__act">Stage selected file</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">u</kbd><span class="shortcuts__act">Unstage selected file</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">c</kbd><span class="shortcuts__act">Focus commit message</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">⌘/Ctrl ↵</kbd><span class="shortcuts__act">Commit</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">p</kbd><span class="shortcuts__act">Push</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">f</kbd><span class="shortcuts__act">Fetch</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">/</kbd><span class="shortcuts__act">Focus graph filter</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">?</kbd><span class="shortcuts__act">Toggle this help</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">Esc</kbd><span class="shortcuts__act">Close menus / overlays</span></div>
+        <div class="shortcuts__row"><kbd class="shortcuts__key">↑↓</kbd><span class="shortcuts__act">Move through commits</span></div>
       </div>
     </div>
   </div>

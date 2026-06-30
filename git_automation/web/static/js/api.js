@@ -64,6 +64,17 @@ function postJson(url, payload) {
   return request(url, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(payload) });
 }
 
+// ---- Slice 4: file-watcher WebSocket URL ------------------------------------
+
+/**
+ * Build the `WS /api/watch?path=` URL for the repo at `path`, picking `wss://`
+ * for an https page and `ws://` otherwise, on the same host/port as the app.
+ */
+export function watchUrl(path) {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}/api/watch?path=${encodeURIComponent(path)}`;
+}
+
 // ---- Identity / onboarding --------------------------------------------------
 
 /** GET /api/identity */
@@ -154,6 +165,11 @@ export function commit(path, message) {
   return postJson('/api/git/commit', { path, message });
 }
 
+/** POST /api/git/commit/amend — amend HEAD (replace message, or `--no-edit` when omitted). */
+export function amendCommit(path, message = null) {
+  return postJson('/api/git/commit/amend', { path, message });
+}
+
 /** POST /api/git/delete — remove files from the working tree (destructive — confirm in UI first). */
 export function deleteFiles(path, files) {
   return postJson('/api/git/delete', { path, files });
@@ -163,6 +179,32 @@ export function deleteFiles(path, files) {
 export function getDiff(path, file, staged = false) {
   const q = `path=${encodeURIComponent(path)}&file=${encodeURIComponent(file)}&staged=${staged ? 'true' : 'false'}`;
   return request(`/api/repo/diff?${q}`);
+}
+
+// ---- Slice 4: hunk staging --------------------------------------------------
+
+/** GET /api/repo/hunks?path=&file=&staged= → { file, binary, hunks:[{header,patch,lines}] } */
+export function getHunks(path, file, staged = false) {
+  const q = `path=${encodeURIComponent(path)}&file=${encodeURIComponent(file)}&staged=${staged ? 'true' : 'false'}`;
+  return request(`/api/repo/hunks?${q}`);
+}
+
+/** POST /api/git/stage-hunk — stage one hunk via its applyable patch. */
+export function stageHunk(path, file, patch) {
+  return postJson('/api/git/stage-hunk', { path, file, patch });
+}
+
+/** POST /api/git/unstage-hunk — unstage one hunk via its applyable patch. */
+export function unstageHunk(path, file, patch) {
+  return postJson('/api/git/unstage-hunk', { path, file, patch });
+}
+
+// ---- Slice 4: historical commit-file diff -----------------------------------
+
+/** GET /api/repo/commit-diff?path=&sha=&file= → { file, diff, binary } */
+export function getCommitDiff(path, sha, file) {
+  const q = `path=${encodeURIComponent(path)}&sha=${encodeURIComponent(sha)}&file=${encodeURIComponent(file)}`;
+  return request(`/api/repo/commit-diff?${q}`);
 }
 
 // ---- Branches ---------------------------------------------------------------
@@ -190,6 +232,16 @@ export function branchDelete(path, name, force = false) {
 /** POST /api/git/branch/merge (destructive — confirm in UI first) */
 export function branchMerge(path, name) {
   return postJson('/api/git/branch/merge', { path, name });
+}
+
+/** POST /api/git/branch/rename — `git branch -m <name> <newName>`. */
+export function branchRename(path, name, newName) {
+  return postJson('/api/git/branch/rename', { path, name, new_name: newName });
+}
+
+/** POST /api/git/branch/track — create & checkout a local branch tracking `remoteRef`. */
+export function branchTrack(path, remoteRef) {
+  return postJson('/api/git/branch/track', { path, remote_ref: remoteRef });
 }
 
 // ---- Commit graph -----------------------------------------------------------

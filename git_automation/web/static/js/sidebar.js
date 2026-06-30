@@ -31,6 +31,7 @@ const ICONS = {
  * @param {HTMLElement} root the `.sidebar` element
  * @param {{
  *   onCheckout:(ref:string)=>void,
+ *   onTrackRemote:(remoteRef:string)=>void,
  *   onBranchMenu:(info:{name:string, kind:string}, x:number, y:number)=>void,
  *   onStashMenu:(index:number, x:number, y:number)=>void,
  *   onTagMenu?:(name:string, x:number, y:number)=>void,
@@ -164,8 +165,9 @@ export function initSidebar(root, cbs = {}) {
         const entry = item({
           icon: ICONS.branch,
           name: local, // display the branch leaf; the remote is the parent node
-          title: r.name,
-          onActivate: () => cbs.onCheckout && cbs.onCheckout(local),
+          title: `${r.name} — double-click to create a tracking branch`,
+          // Double-clicking a remote ref creates & checks out a local tracking branch.
+          onActivate: () => cbs.onTrackRemote && cbs.onTrackRemote(r.name),
           onContext: (x, y) => cbs.onBranchMenu && cbs.onBranchMenu({ name: r.name, local, kind: 'remote' }, x, y),
         });
         return attach(entry, null);
