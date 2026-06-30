@@ -6,7 +6,7 @@
 // badge, created in shell.js so the badge stays live on any tab) is injected via
 // init(); this view owns the OS-alert toggle and reuses alerts for list refresh.
 
-import { el } from '../ui.js';
+import { el, setLoading } from '../ui.js';
 import * as api from './api.js';
 import { createDetail } from './detail.js';
 import { relTime } from './util.js';
@@ -51,10 +51,18 @@ export function createView(root, { toast }) {
 
   // DOM refs (filled by build())
   let listEl, detail, panelTitle, modeTabs, issueControls, notifControls;
-  let stateSelect, markReadBtn, osToggleBtn, repoInput;
+  let stateSelect, markReadBtn, osToggleBtn, testBtn, repoInput;
   let filterTabs = [];
   let lastNotifications = [];
   let selectedNotificationId = null;
+  let openDetail = null; // { repo, number } currently shown in the detail pane
+
+  // All paths into the detail pane go through here so live refreshes know what's
+  // open and can re-fetch it to surface new comments.
+  function showDetail(target) {
+    openDetail = target;
+    detail.show(target);
+  }
 
   // ---- Row builders --------------------------------------------------------
   function notificationRow(note) {
@@ -100,7 +108,7 @@ export function createView(root, { toast }) {
       selectedKey = key;
       selectedNotificationId = null;
       renderRows(lastRows, true);
-      detail.show({ repo: issue.repo, number: issue.number });
+      showDetail({ repo: issue.repo, number: issue.number });
     });
     return row;
   }
@@ -191,7 +199,7 @@ export function createView(root, { toast }) {
     selectedKey = note.number != null ? `${note.repo}#${note.number}` : note.id;
     if (mode === 'notifications') renderRows(lastNotifications, false);
     if (note.number != null) {
-      detail.show({ repo: note.repo, number: note.number });
+      showDetail({ repo: note.repo, number: note.number });
     } else if (note.url) {
       window.open(note.url, '_blank', 'noopener');
     } else {
@@ -258,6 +266,26 @@ export function createView(root, { toast }) {
     refreshOsToggle();
   }
 
+  // Ask the server to fire a desktop notification (and a `{type:'test'}` push on
+  // the live channel) so the wiring can be verified end-to-end.
+  async function sendTestNotification() {
+    setLoading(testBtn, true);
+    try {
+      const res = await api.testNotification();
+      if (res && res.ok === false) throw new Error('Server rejected the request.');
+      if (res && res.delivered === false) {
+        toast('info', 'Test sent (no desktop alert)',
+          'The server has no "notify-send" installed, so no OS notification was shown.');
+      } else {
+        toast('success', 'Test notification sent', 'Check for a desktop notification.');
+      }
+    } catch (err) {
+      toast('error', 'Could not send test notification', err.message);
+    } finally {
+      setLoading(testBtn, false);
+    }
+  }
+
   // ---- Build the DOM -------------------------------------------------------
   function build() {
     // Mode strip: Notifications | Issues
@@ -281,10 +309,21 @@ export function createView(root, { toast }) {
     });
     osToggleBtn.addEventListener('click', toggleOsAlerts);
 
+    testBtn = el('button', {
+      class: 'btn btn--ghost btn--sm', text: 'Test notification',
+      attrs: {
+        type: 'button',
+        'aria-label': 'Send a test desktop notification from the server',
+        title: 'Send a test desktop notification from the server',
+      },
+    });
+    testBtn.addEventListener('click', sendTestNotification);
+
     const headerRow = el('div', { class: 'cluster' }, [
       el('div', { class: 'gh-filter', attrs: { role: 'tablist', 'aria-label': 'GitHub section' } }, modeTabs),
       el('span', { class: 'toolbar2__spacer' }),
       osToggleBtn,
+      testBtn,
     ]);
 
     // Issue sub-filters (assigned / mentioned / created / all) + repo + state.
@@ -379,12 +418,22 @@ export function createView(root, { toast }) {
     alerts = alertsController || null;
     if (!built) build();
     refreshOsToggle();
-    // Keep the list fresh when the poller pulls new notifications.
+    // Live-refresh whatever is on screen whenever the stream pushes an update.
     if (alerts) {
       alerts.setOnChange((items) => {
         lastNotifications = Array.isArray(items) ? items : lastNotifications;
-        if (mode === 'notifications' && root.offsetParent !== null) {
+        // Only touch the DOM when the GitHub view is actually visible.
+        if (root.offsetParent === null) return;
+        if (mode === 'notifications') {
           renderRows(lastNotifications, false);
+        } else {
+          loadIssues(); // re-fetch — issues aren't carried on the notifications event
+        }
+        // Re-fetch the open thread so new comments appear — but never clobber an
+        // in-progress reply (re-rendering would discard the textarea contents).
+        if (openDetail) {
+          const replyEl = root.querySelector('#gh-reply');
+          if (!replyEl || !replyEl.value.trim()) detail.show(openDetail);
         }
       });
     }

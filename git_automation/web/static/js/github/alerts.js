@@ -1,16 +1,21 @@
-// github/alerts.js — notification polling, unread badge, and browser OS alerts.
+// github/alerts.js — live notification stream, unread badge, and browser OS alerts.
 //
-// Polls GET /api/github/notifications on an interval (default 60s; never faster
-// than GitHub's advertised minimum), diffs new thread ids against a last-seen set
-// in localStorage, keeps the app-nav unread badge in sync, and — for NEW items
-// whose reason is `mention` or `assign(ee)` — fires an in-app toast plus an
-// optional browser `Notification` (permission is requested only via a user
-// toggle, never on load). Clicking the OS notification focuses the window and
-// opens that thread in the detail pane.
+// Subscribes to `WS /api/github/events`, which the backend pushes on every poll
+// round: `{type:'notifications', count:<unread>, items:[...], new:[...]}` (plus a
+// `{type:'test'}` ping). On each push we sync the app-nav unread badge from
+// `count`, fire an in-app toast + optional browser `Notification` for NEW items
+// whose reason is `mention`/`assign(ee)`, and call the `onChange(items)` hook so
+// the open view live-refreshes. The socket reconnects with capped backoff; while
+// it is down a slow (90s) fallback poll of GET /api/github/notifications keeps the
+// badge and view alive. Browser-notification permission is requested only via a
+// user toggle (a user gesture), never on load. Clicking an OS notification
+// focuses the window and opens that thread in the detail pane.
 
 import * as api from './api.js';
 
-const MIN_INTERVAL_MS = 60000; // hard floor — never poll faster than 60s
+const FALLBACK_INTERVAL_MS = 90000; // slow poll, used ONLY while the socket is down
+const RECONNECT_BASE_MS = 1000; // first reconnect delay
+const RECONNECT_MAX_MS = 30000; // capped backoff ceiling
 const SEEN_KEY = 'gh.alerts.seenIds';
 const PREF_KEY = 'gh.alerts.browserEnabled';
 
@@ -43,19 +48,22 @@ function saveSeen(set) {
  *   badgeEl: HTMLElement,                // .appnav__badge on the GitHub tab
  *   toast: (variant,title,msg?)=>void,   // ui.js toast
  *   onOpenThread: (note)=>void,          // open a notification's thread in detail
- *   intervalMs?: number,                 // poll cadence (clamped to >= 60s)
  * }} opts
  */
-export function createAlerts({ badgeEl, toast, onOpenThread, intervalMs = MIN_INTERVAL_MS }) {
-  const period = Math.max(MIN_INTERVAL_MS, Number(intervalMs) || MIN_INTERVAL_MS);
-  let timer = null;
+export function createAlerts({ badgeEl, toast, onOpenThread }) {
   let running = false;
-  let seeded = false; // first poll only seeds the seen-set (no alert spam)
+  let seeded = false; // first client-side diff only seeds the seen-set (no spam)
   const seen = loadSeen();
   // localStorage persistence means a returning user is already "seeded".
   if (seen.size > 0) seeded = true;
 
   let onChange = null; // optional hook for the view to refresh its list
+
+  // Connection state
+  let socket = null;
+  let reconnectTimer = null;
+  let fallbackTimer = null;
+  let backoff = RECONNECT_BASE_MS;
 
   // ---- Unread badge --------------------------------------------------------
   // `.appnav__badge` sets `display:inline-grid`, which defeats the [hidden]
@@ -135,60 +143,160 @@ export function createAlerts({ badgeEl, toast, onOpenThread, intervalMs = MIN_IN
     }
   }
 
-  // ---- Poll ----------------------------------------------------------------
-  async function poll() {
+  // ---- Shared item processing ----------------------------------------------
+  // Fire a toast + OS notification for genuinely-new mention/assign items,
+  // de-duplicated against the persisted seen-set so a socket replay (reconnect)
+  // never re-alerts.
+  function processNew(list) {
+    if (!Array.isArray(list)) return;
+    for (const note of list) {
+      if (!note || note.id == null || seen.has(note.id)) continue;
+      seen.add(note.id);
+      if (!isAlertReason(note.reason)) continue;
+      const label = note.reason.toLowerCase() === 'mention' ? 'New mention' : 'New assignment';
+      if (toast) toast('info', label, `${note.repo} — ${note.title}`);
+      fireOsNotification(note);
+    }
+    saveSeen(seen);
+  }
+
+  /** Remember every currently-visible item so a later diff won't re-fire it. */
+  function markSeen(items) {
+    if (!Array.isArray(items)) return;
+    let changed = false;
+    for (const it of items) {
+      if (it && it.id != null && !seen.has(it.id)) { seen.add(it.id); changed = true; }
+    }
+    if (changed) saveSeen(seen);
+  }
+
+  // ---- WebSocket stream ----------------------------------------------------
+  function handleMessage(data) {
+    let msg;
+    try {
+      msg = JSON.parse(data);
+    } catch {
+      return; // ignore non-JSON frames
+    }
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'test') {
+      if (toast) toast('info', 'Test event received', 'The live update channel is working.');
+      return;
+    }
+
+    if (msg.type === 'notifications') {
+      const items = Array.isArray(msg.items) ? msg.items : [];
+      const count = Number.isFinite(msg.count)
+        ? msg.count
+        : items.filter((it) => it && it.unread).length;
+      setBadge(count);
+      // The server already diffs `new` per poll round; we still de-dup locally.
+      processNew(msg.new);
+      markSeen(items);
+      seeded = true;
+      if (onChange) onChange(items);
+    }
+  }
+
+  function connect() {
+    if (!running) return;
+    let url;
+    try {
+      url = api.eventsUrl();
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+    let s;
+    try {
+      s = new WebSocket(url);
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+    socket = s;
+    s.addEventListener('open', () => {
+      backoff = RECONNECT_BASE_MS; // healthy socket — reset backoff
+      stopFallback(); // live stream takes over from the slow poll
+    });
+    s.addEventListener('message', (e) => handleMessage(e.data));
+    s.addEventListener('close', () => {
+      if (socket === s) socket = null;
+      scheduleReconnect();
+    });
+    s.addEventListener('error', () => {
+      try { s.close(); } catch { /* triggers 'close' → reconnect */ }
+    });
+  }
+
+  function scheduleReconnect() {
+    if (!running) return;
+    startFallback(); // keep the badge/view alive while the socket is down
+    if (reconnectTimer) return;
+    const delay = backoff;
+    backoff = Math.min(RECONNECT_MAX_MS, backoff * 2);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  }
+
+  // ---- Fallback poll (only while the socket is down) -----------------------
+  async function fallbackPoll() {
     let items;
     try {
       items = await api.listNotifications();
     } catch {
-      // Transient/auth failure — keep the badge as-is, retry next tick.
-      return;
+      return; // transient/auth failure — keep badge as-is, retry next tick
     }
     if (!Array.isArray(items)) return;
 
-    const unreadCount = items.filter((it) => it.unread).length;
-    setBadge(unreadCount);
+    setBadge(items.filter((it) => it && it.unread).length);
 
-    // New = not previously seen. On the very first poll we only seed.
-    const fresh = [];
-    for (const it of items) {
-      if (!seen.has(it.id)) {
-        if (seeded) fresh.push(it);
-        seen.add(it.id);
-      }
+    if (!seeded) {
+      // First-ever diff only seeds — never replay the whole inbox as "new".
+      markSeen(items);
+      seeded = true;
+    } else {
+      processNew(items.filter((it) => it && it.id != null && !seen.has(it.id)));
+      markSeen(items);
     }
-    saveSeen(seen);
-    seeded = true;
-
-    for (const note of fresh) {
-      if (!isAlertReason(note.reason)) continue;
-      const reasonLabel = note.reason.toLowerCase() === 'mention' ? 'New mention' : 'New assignment';
-      if (toast) toast('info', reasonLabel, `${note.repo} — ${note.title}`);
-      fireOsNotification(note);
-    }
-
     if (onChange) onChange(items);
+  }
+
+  function startFallback() {
+    if (fallbackTimer) return;
+    fallbackTimer = setInterval(fallbackPoll, FALLBACK_INTERVAL_MS);
+    fallbackPoll(); // immediate catch-up while waiting to reconnect
+  }
+  function stopFallback() {
+    if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
   }
 
   // ---- Lifecycle -----------------------------------------------------------
   function start() {
     if (running) return;
     running = true;
-    poll();
-    timer = setInterval(poll, period);
+    fallbackPoll(); // seed the badge immediately, before the first push lands
+    connect();
   }
   function stop() {
     running = false;
-    if (timer) { clearInterval(timer); timer = null; }
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    stopFallback();
+    if (socket) {
+      try { socket.close(); } catch { /* ignore */ }
+      socket = null;
+    }
   }
 
-  // Hide the markup's initial "0" immediately (before the first poll resolves).
+  // Hide the markup's initial "0" immediately (before the first push resolves).
   setBadge(0);
 
   return {
     start,
     stop,
-    poll,
     setBadge,
     enableBrowser,
     disableBrowser,

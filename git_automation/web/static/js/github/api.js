@@ -101,3 +101,25 @@ export function getIssue(repo, number) {
 export function addComment(repo, number, body) {
   return postJson('/api/github/issue/comment', { repo, number, body });
 }
+
+// ---- Live events ------------------------------------------------------------
+
+/**
+ * Build the `WS /api/github/events` URL, picking `wss://` for an https page and
+ * `ws://` otherwise, on the same host/port as the app (mirrors `watchUrl` in
+ * ../api.js). The socket pushes `{type:'notifications', count, items, new}` on
+ * every poll round and `{type:'test'}` for a manual ping.
+ */
+export function eventsUrl() {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${window.location.host}/api/github/events`;
+}
+
+/**
+ * POST /api/github/test-notification → { ok, delivered }
+ * Fires an OS notification on the server; `delivered:false` means the server has
+ * no `notify-send` binary available.
+ */
+export function testNotification() {
+  return request('/api/github/test-notification', { method: 'POST' });
+}
