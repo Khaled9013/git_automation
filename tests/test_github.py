@@ -175,6 +175,20 @@ async def test_list_notifications_unparseable_number_is_none(
     assert notes[0].url is None
 
 
+async def test_list_notifications_empty_no_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty notifications response maps to [] without error."""
+    _patch_run(monkeypatch, lambda a, s: ProcessResult(0, "[]", ""))
+    assert await client.list_notifications() == []
+
+
+async def test_list_notifications_null_output_no_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """gh emitting a literal null (or empty stdout) yields []."""
+    _patch_run(monkeypatch, lambda a, s: ProcessResult(0, "", ""))
+    assert await client.list_notifications() == []
+
+
 async def test_list_notifications_gh_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_run(monkeypatch, lambda a, s: ProcessResult(1, "", "HTTP 401: Bad credentials"))
     with pytest.raises(GitAutomationError) as exc:
@@ -220,6 +234,32 @@ async def test_mark_notification_read_gh_failure(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(GitAutomationError) as exc:
         await client.mark_notification_read("100")
     assert exc.value.code == "github_mark_read_failed"
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    ["", "-1", "1/comments", "1?foo=bar", "../user", "12a", "abc", "1 2"],
+)
+async def test_mark_notification_read_rejects_non_numeric_id(
+    monkeypatch: pytest.MonkeyPatch, bad_id: str
+) -> None:
+    """A non-numeric thread id can alter the gh api path; reject before any call."""
+    recorded = _patch_run(monkeypatch, lambda a, s: ProcessResult(0, "", ""))
+    with pytest.raises(GitAutomationError) as exc:
+        await client.mark_notification_read(bad_id)
+    assert exc.value.code == "invalid_argument"
+    assert recorded == []
+
+
+async def test_mark_notification_read_already_read_or_invalid_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 404 (gone/invalid) surfaces as a clean domain error, no traceback."""
+    _patch_run(monkeypatch, lambda a, s: ProcessResult(1, "", "HTTP 404: Not Found"))
+    with pytest.raises(GitAutomationError) as exc:
+        await client.mark_notification_read("999")
+    assert exc.value.code == "github_mark_read_failed"
+    assert "404" in exc.value.message
 
 
 # --- list_issues -------------------------------------------------------------
@@ -322,6 +362,38 @@ async def test_list_issues_all_without_repo_is_error(monkeypatch: pytest.MonkeyP
     assert recorded == []
 
 
+@pytest.mark.parametrize("bad_state", ["all", "merged", "--repo", "Open", "", "open closed"])
+async def test_list_issues_rejects_invalid_state(
+    monkeypatch: pytest.MonkeyPatch, bad_state: str
+) -> None:
+    """state is allow-listed to {open, closed}; nothing reaches gh otherwise."""
+    recorded = _patch_run(monkeypatch, lambda a, s: _ok([]))
+    with pytest.raises(GitAutomationError) as exc:
+        await client.list_issues(state=bad_state)
+    assert exc.value.code == "invalid_argument"
+    assert recorded == []
+
+
+async def test_list_issues_empty_list_no_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty issues list maps to [] without error."""
+    _patch_run(monkeypatch, lambda a, s: ProcessResult(0, "[]", ""))
+    assert await client.list_issues() == []
+
+
+async def test_list_issues_rate_limited_is_clean_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 403 rate-limit surfaces as a clean domain error (no secrets/traceback)."""
+    _patch_run(
+        monkeypatch,
+        lambda a, s: ProcessResult(1, "", "HTTP 403: API rate limit exceeded"),
+    )
+    with pytest.raises(GitAutomationError) as exc:
+        await client.list_issues()
+    assert exc.value.code == "github_issues_failed"
+    assert "rate limit" in exc.value.message.lower()
+
+
 async def test_list_issues_invalid_filter(monkeypatch: pytest.MonkeyPatch) -> None:
     recorded = _patch_run(monkeypatch, lambda a, s: _ok([]))
     with pytest.raises(GitAutomationError) as exc:
@@ -375,6 +447,30 @@ async def test_get_issue_argv_and_mapping(monkeypatch: pytest.MonkeyPatch) -> No
     assert detail.comments[0].body == "I can repro."
     assert detail.comments[0].created_at == "2026-06-30T12:00:00Z"
     assert detail.url == "https://github.com/octocat/hello/issues/42"
+
+
+async def test_get_issue_no_body_no_comments_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A closed issue with no body and no comments maps cleanly."""
+    payload = {
+        "number": 9,
+        "title": "Done",
+        "state": "CLOSED",
+        "author": {"login": "octocat"},
+        "body": "",
+        "assignees": [],
+        "labels": [],
+        "comments": [],
+        "url": "https://github.com/octocat/hello/issues/9",
+    }
+    _patch_run(monkeypatch, lambda a, s: _ok(payload))
+    detail = await client.get_issue("octocat/hello", 9)
+    assert detail.state == "CLOSED"
+    assert detail.body == ""
+    assert detail.comments == []
+    assert detail.assignees == []
+    assert detail.labels == []
 
 
 async def test_get_issue_rejects_bad_number(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -436,6 +532,27 @@ async def test_add_comment_body_on_stdin_argv(monkeypatch: pytest.MonkeyPatch) -
     assert "Thanks for the report!" not in " ".join(post["args"])
     assert comment.author == "octocat"
     assert comment.body == "Thanks for the report!"
+
+
+async def test_add_comment_preserves_special_chars_via_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Markdown / newlines / shell metachars survive verbatim on stdin, not argv."""
+    body = "## Heading\n\n- `rm -rf /` & $(whoami)\n> quote\n--flag not a flag\n"
+
+    def handler(args, stdin):
+        if args[:3] == ["gh", "api", "/user"]:
+            return _ok({"login": "octocat"})
+        return ProcessResult(0, "https://github.com/octocat/hello/issues/42#c1", "")
+
+    recorded = _patch_run(monkeypatch, handler)
+    comment = await client.add_comment("octocat/hello", 42, body)
+
+    post = recorded[0]
+    assert post["args"][-2:] == ["--body-file", "-"]
+    assert post["stdin"] == body  # byte-for-byte preserved
+    assert body not in " ".join(post["args"])  # never in argv
+    assert comment.body == body
 
 
 async def test_add_comment_rejects_bad_repo(monkeypatch: pytest.MonkeyPatch) -> None:

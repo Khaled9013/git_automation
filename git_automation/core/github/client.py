@@ -42,6 +42,12 @@ _LIST_FILTER_FLAGS = {
     "created": "--author",
 }
 _VALID_FILTERS = {"assigned", "mentioned", "created", "all"}
+_VALID_STATES = {"open", "closed"}
+
+# A GitHub notification thread id is an integer string. Restricting to digits
+# also keeps the value from altering the ``gh api`` path it is interpolated into
+# (no ``/``, ``?``, ``..`` or option-like prefixes can leak through).
+_THREAD_ID_RE = re.compile(r"^[0-9]+$")
 
 _SEARCH_JSON = "number,title,state,repository,author,assignees,labels,commentsCount,updatedAt,url"
 _LIST_JSON = "number,title,state,author,assignees,labels,comments,updatedAt,url"
@@ -77,14 +83,30 @@ def _validate_number(number: int) -> int:
 
 
 def _validate_thread_id(thread_id: str) -> str:
-    """Validate a notification ``thread_id`` (non-empty, not option-like)."""
-    if not thread_id or thread_id.startswith("-"):
+    """Validate a notification ``thread_id`` (digits only).
+
+    Restricting to digits closes both the option-injection vector (a leading
+    ``-``) and the ``gh api`` path-injection vector (``/``, ``?``, ``..``) that a
+    free-form id interpolated into ``/notifications/threads/{id}`` would open.
+    """
+    if not thread_id or not _THREAD_ID_RE.match(thread_id):
         raise GitAutomationError(
             "invalid_argument",
-            "Invalid notification thread id.",
+            "Invalid notification thread id: expected a numeric id.",
             400,
         )
     return thread_id
+
+
+def _validate_state(state: str) -> str:
+    """Validate an issue ``state`` against the ``{open, closed}`` allow-list."""
+    if state not in _VALID_STATES:
+        raise GitAutomationError(
+            "invalid_argument",
+            f"Invalid state: expected one of {sorted(_VALID_STATES)}.",
+            400,
+        )
+    return state
 
 
 def _parse_json(result: process.ProcessResult, code: str) -> object:
@@ -174,6 +196,17 @@ async def list_notifications(
     Returns:
         The notification threads mapped to :class:`Notification`.
 
+    Note:
+        This returns only the **first page** of ``gh api /notifications`` (gh's
+        default page size, currently 30). This is a deliberate, low-risk choice:
+        the inbox shows the most recent threads and the alert poller diffs ids
+        across polls, so the newest items always surface. Following ``Link``
+        pagination (``gh api --paginate``) is intentionally avoided here because
+        it fans out an unbounded number of requests on every 60s poll and would
+        burn the authenticated user's GitHub rate limit. If a future slice needs
+        the full backlog, raise the page size (``?per_page=50``) before adding
+        ``--paginate``.
+
     Raises:
         GitAutomationError: ``github_notifications_failed`` on gh failure or
             unparseable output.
@@ -255,6 +288,7 @@ async def list_issues(
             f"Invalid filter: expected one of {sorted(_VALID_FILTERS)}.",
             400,
         )
+    _validate_state(state)
 
     if repo is not None:
         _validate_repo(repo)

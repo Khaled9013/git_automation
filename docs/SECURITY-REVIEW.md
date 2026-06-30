@@ -250,3 +250,104 @@ exposed. Consistent with F5/F7.
 - Added `tests/test_slice3_security.py` (11 regression tests) covering conflict
   path-traversal (write/read, relative/absolute/symlink/`.git`, core + API) and
   the terminal origin/CSWSH defense.
+
+---
+
+# Security Review — GitHub cockpit slice (notifications + issues)
+
+Scope: the *new* GitHub surface only — `core/github/{client,models}.py`,
+`web/api/github.py`, and the frontend `static/js/github/*` + `js/shell.js`.
+Earlier findings (F1–F9, S1–S7) are not re-litigated. Same threat model:
+single-user, localhost-only, driving the authenticated `gh` CLI.
+
+Audit date: 2026-06-30. Test baseline: 264 → 285 passing (`uv run pytest -q`),
+`uv run ruff check .` clean.
+
+## Findings
+
+### G1 — `gh api` path injection via `thread_id` — MEDIUM (fixed)
+
+`core/github/client.py::mark_notification_read`. The caller-supplied `thread_id`
+was interpolated into the `gh api` path `"/notifications/threads/{thread_id}"`
+after only rejecting a leading `-`. A value containing `/`, `?`, or `..`
+(e.g. `123/../../user`, `1?per_page=1`) could therefore re-target the request at
+a *different* GitHub API endpoint — an SSRF-style path-traversal within the
+authenticated GitHub API. `mark_notification_read` is the exposable seam future
+agents call directly, so HTTP route-matching (which already rejects `/`) is not
+the only entry point.
+
+**Fix:** `_validate_thread_id` now requires `^[0-9]+$` (GitHub thread ids are
+integers). This simultaneously closes the option-injection (`-`) and
+path-injection (`/`, `?`, `..`) vectors. Regression tests parametrize the
+rejected forms (`tests/test_github.py::test_mark_notification_read_rejects_non_numeric_id`).
+
+### G2 — `state` not allow-listed — LOW (fixed)
+
+`core/github/client.py::list_issues`. `state` flowed straight into
+`["--state", state]` for both `gh issue list` and `gh search issues`. Because it
+is the *value of* `--state`, a leading `-` could not be re-read as a separate
+flag (so no injection), but the value was otherwise unvalidated — inconsistent
+with the `filter` allow-list and the project's defense-in-depth posture.
+
+**Fix:** Added `_validate_state` allow-listing `state ∈ {open, closed}` (the only
+two states the UI offers); applied at the top of `list_issues` before any argv
+is built. Regression test parametrizes rejected values
+(`test_list_issues_rejects_invalid_state`).
+
+## Verified OK (no change needed)
+
+### G3 — No shell, always arg lists — OK
+
+Every `gh` invocation in `core/github/client.py` passes a Python list to
+`run_process` (`asyncio.create_subprocess_exec`, no `shell=True`). Tests assert
+the exact argv built for every function. Consistent with F4.
+
+### G4 — Comment body confidentiality / integrity — OK
+
+`add_comment` passes the body via `gh issue comment ... --body-file -` with the
+text on **stdin** (`run_process(..., stdin=body)`); it never appears in argv or
+any log. Markdown, newlines, and shell metacharacters are preserved byte-for-byte
+(no shell to interpret them). Locked in by
+`test_add_comment_preserves_special_chars_via_stdin`. Consistent with F5/S7.
+
+### G5 — Option injection via `repo` / `number` / `filter` — OK (guarded)
+
+`repo` is validated against a strict `owner/name` regex whose first character
+class excludes `-` (so it can never be read as a `gh` option); spaces and
+shell metacharacters are rejected. `number` must be a positive `int` (rejecting
+`bool`). `filter` is allow-listed to `{assigned, mentioned, created, all}`, with
+`all` additionally requiring a `repo` (mirrors the `gh search` constraint).
+Existing + new tests assert each rejects bad input *before* any subprocess runs.
+
+### G6 — Error / rate-limit / auth-failure leakage — OK
+
+`gh` failures (401 not-authenticated, 403 rate-limit, private-repo 404, bad
+JSON) surface as `GitAutomationError` rendered as `{"error":{code,message}}`
+carrying only `gh`'s own combined output — no tracebacks, file contents, or
+tokens. The `gh` token lives in `gh`'s own keyring/config and is never read,
+passed, or logged by this module. Covered by `test_list_*_gh_failure`,
+`test_list_issues_rate_limited_is_clean_error`, and
+`test_mark_notification_read_already_read_or_invalid_thread`.
+
+## Documented limitation (not a vulnerability)
+
+- **`/notifications` returns only the first page.** `list_notifications` calls
+  `gh api /notifications` without `--paginate`. This is deliberate: the inbox
+  shows the most recent threads and the 60s alert poller diffs ids across polls,
+  so new items always surface. `--paginate` would fan out an unbounded number of
+  requests on every poll and burn the user's GitHub rate limit. Documented in
+  the function docstring; raise `?per_page=50` before reaching for `--paginate`
+  if a future slice needs the backlog.
+
+## Hardening applied (GitHub slice)
+
+- Tightened `_validate_thread_id` to digits-only and added `_validate_state`
+  (allow-list `{open, closed}`) in `core/github/client.py` (G1, G2).
+- Documented the first-page `/notifications` limitation in the
+  `list_notifications` docstring.
+- Added 21 regression/edge tests to `tests/test_github.py` (thread-id injection,
+  state allow-list, rate-limit/404 clean errors, empty notification/issue lists,
+  closed/empty-body issue detail, and stdin-preservation of special-char bodies).
+- Frontend UX: the Issues "All" filter (which the backend requires a repo for)
+  is now gated behind a new repo input in the filter row — disabled until a repo
+  is set — removing the previous dead/error tab (`static/js/github/view.js`).

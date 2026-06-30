@@ -46,11 +46,13 @@ export function createView(root, { toast }) {
   let mode = 'notifications'; // 'notifications' | 'issues'
   let issueFilter = 'assigned'; // assigned | mentioned | created | all
   let issueState = 'open'; // open | closed
+  let issueRepo = ''; // owner/name; empty => search @me across GitHub
   let selectedKey = null; // `${repo}#${number}` of the open row
 
   // DOM refs (filled by build())
   let listEl, detail, panelTitle, modeTabs, issueControls, notifControls;
-  let stateSelect, markReadBtn, osToggleBtn;
+  let stateSelect, markReadBtn, osToggleBtn, repoInput;
+  let filterTabs = [];
   let lastNotifications = [];
   let selectedNotificationId = null;
 
@@ -141,7 +143,11 @@ export function createView(root, { toast }) {
     panelTitle.textContent = 'Issues';
     listEl.setAttribute('aria-busy', 'true');
     try {
-      const items = await api.listIssues({ filter: issueFilter, state: issueState });
+      const items = await api.listIssues({
+        repo: issueRepo || null,
+        filter: issueFilter,
+        state: issueState,
+      });
       if (mode === 'issues') renderRows(Array.isArray(items) ? items : [], true);
     } catch (err) {
       toast('error', 'Could not load issues', err.message);
@@ -153,6 +159,30 @@ export function createView(root, { toast }) {
 
   function reload() {
     return mode === 'notifications' ? loadNotifications() : loadIssues();
+  }
+
+  // ---- Issue-filter helpers ------------------------------------------------
+  function syncFilterTabs() {
+    for (const ft of filterTabs) {
+      const a = ft.dataset.filter === issueFilter;
+      ft.classList.toggle('is-active', a);
+      ft.setAttribute('aria-selected', String(a));
+    }
+  }
+
+  // "All" needs a repo (gh search has no repo-less "all"); disable it when the
+  // repo field is empty and fall back to "Assigned" if it was the active tab.
+  function syncAllTab() {
+    const allTab = filterTabs.find((t) => t.dataset.filter === 'all');
+    if (!allTab) return;
+    const enabled = !!issueRepo;
+    allTab.disabled = !enabled;
+    allTab.setAttribute('aria-disabled', String(!enabled));
+    allTab.title = enabled ? 'All issues in the repo' : 'Enter a repo to list all its issues';
+    if (!enabled && issueFilter === 'all') {
+      issueFilter = 'assigned';
+      syncFilterTabs();
+    }
   }
 
   // ---- Interactions --------------------------------------------------------
@@ -257,28 +287,48 @@ export function createView(root, { toast }) {
       osToggleBtn,
     ]);
 
-    // Issue sub-filters (assigned / mentioned / created / all) + state
+    // Issue sub-filters (assigned / mentioned / created / all) + repo + state.
+    // "All" lists every issue in a repo and so requires the repo field; the
+    // @me-scoped filters work with or without a repo. We disable "All" until a
+    // repo is set, removing the old dead/error tab.
     const filterDefs = [
       ['assigned', 'Assigned'], ['mentioned', 'Mentions'], ['created', 'Created'], ['all', 'All'],
     ];
-    const filterTabs = filterDefs.map(([val, label]) => {
+    filterTabs = filterDefs.map(([val, label]) => {
       const t = el('button', {
         class: `gh-filter__tab${val === issueFilter ? ' is-active' : ''}`, text: label,
         attrs: { role: 'tab', 'aria-selected': String(val === issueFilter) },
       });
       t.dataset.filter = val;
       t.addEventListener('click', () => {
-        if (issueFilter === val) return;
+        if (t.disabled || issueFilter === val) return;
         issueFilter = val;
-        for (const ft of filterTabs) {
-          const a = ft.dataset.filter === issueFilter;
-          ft.classList.toggle('is-active', a);
-          ft.setAttribute('aria-selected', String(a));
-        }
+        syncFilterTabs();
         loadIssues();
       });
       return t;
     });
+
+    repoInput = el('input', {
+      class: 'input',
+      attrs: {
+        type: 'text', placeholder: 'owner/name', spellcheck: 'false',
+        autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Scope to repository',
+        title: 'Scope issues to a repository (enables the "All" filter)',
+      },
+    });
+    function applyRepo() {
+      const next = repoInput.value.trim();
+      if (next === issueRepo) { syncAllTab(); return; }
+      issueRepo = next;
+      syncAllTab();
+      loadIssues();
+    }
+    repoInput.addEventListener('change', applyRepo);
+    repoInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); applyRepo(); }
+    });
+
     stateSelect = el('select', { class: 'select', attrs: { 'aria-label': 'Issue state' } }, [
       el('option', { text: 'Open', attrs: { value: 'open' } }),
       el('option', { text: 'Closed', attrs: { value: 'closed' } }),
@@ -289,8 +339,10 @@ export function createView(root, { toast }) {
     issueControls = el('div', { class: 'cluster' }, [
       el('div', { class: 'gh-filter', attrs: { role: 'tablist', 'aria-label': 'Issue filter' } }, filterTabs),
       el('span', { class: 'toolbar2__spacer' }),
+      repoInput,
       stateSelect,
     ]);
+    syncAllTab();
 
     // Notification controls (mark read)
     markReadBtn = el('button', {
