@@ -265,3 +265,14 @@ implementation plan.
   in-UI or file-defined.
 - Phase 3: how sub-agents share/isolate working trees (e.g. git worktrees), and
   the review/merge gate before anything is pushed.
+
+---
+
+## 10. Next step
+
+- **Markdown file support — render & display.** Detect Markdown files (`.md`,
+  `.markdown`) and render them as formatted Markdown in the UI instead of plain
+  text: in the diff/file viewer and commit-file view, and for content that is
+  Markdown (e.g. README files, issue/PR bodies and comments in the GitHub
+  cockpit). Add a raw/rendered toggle. Keep it offline/no-CDN (vendor a small
+  Markdown renderer, consistent with the existing dark theme).
