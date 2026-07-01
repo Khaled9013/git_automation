@@ -174,33 +174,69 @@ async def _current_branch(cwd: str) -> str | None:
     return branch or None
 
 
-async def _upstream(cwd: str) -> Upstream | None:
-    """Return the current branch's upstream tracking ref, or ``None``."""
-    result = await run_git(
-        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-        cwd=cwd,
-    )
-    full = result.output.strip()
-    if not result.ok or "/" not in full:
-        return None
-    remote, branch = full.split("/", 1)
-    return Upstream(remote=remote, branch=branch)
+def _parse_status_v2(output: str) -> tuple[str | None, Upstream | None, int, int, bool]:
+    """Parse ``git status --porcelain=v2 --branch`` into the status fields.
 
+    A single ``git status --porcelain=v2 --branch`` invocation reports everything
+    :func:`get_status` needs, replacing the former four-process fan-out
+    (``branch --show-current`` + ``rev-parse @{upstream}`` +
+    ``rev-list --left-right`` + ``status --porcelain``). Header lines start with
+    ``#``; each remaining non-empty line is one changed entry.
 
-async def _ahead_behind(cwd: str) -> tuple[int, int]:
-    """Return ``(ahead, behind)`` relative to the current branch's upstream."""
-    result = await run_git(
-        ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
-        cwd=cwd,
-    )
-    parts = result.output.split()
-    if not result.ok or len(parts) != 2:
-        return 0, 0
-    try:
-        behind, ahead = int(parts[0]), int(parts[1])
-    except ValueError:
-        return 0, 0
-    return ahead, behind
+    Header lines of interest (others such as ``# branch.oid`` are ignored):
+
+    * ``# branch.head <name>`` -- the current branch, or the literal
+      ``(detached)`` for a detached HEAD. We map ``(detached)`` to ``None`` to
+      match the old ``branch --show-current`` behavior (empty -> ``None``). An
+      unborn branch still reports its configured name (e.g. ``main``), exactly as
+      ``--show-current`` did.
+    * ``# branch.upstream <remote>/<branch>`` -- present only when an upstream is
+      configured; absent otherwise (``upstream`` stays ``None``).
+    * ``# branch.ab +<ahead> -<behind>`` -- present only alongside an upstream.
+      When absent, ``ahead``/``behind`` stay ``0`` (matching the old code, which
+      only computed them ``if upstream``).
+
+    Any non-header line (``1``/``2`` tracked changes, ``?`` untracked, ``u``
+    unmerged) means the tree is dirty. ``!`` ignored entries are not emitted by
+    default, so their absence needs no special handling.
+
+    Returns:
+        ``(current_branch, upstream, ahead, behind, dirty)``.
+    """
+    current_branch: str | None = None
+    upstream: Upstream | None = None
+    ahead = behind = 0
+    dirty = False
+    for line in output.splitlines():
+        if not line:
+            continue
+        if not line.startswith("# "):
+            # Any porcelain-v2 change entry (1/2/u/?) marks the tree dirty; this
+            # mirrors the old ``status --porcelain`` non-empty check, under which
+            # untracked files also counted as dirty.
+            dirty = True
+            continue
+        if line.startswith("# branch.head "):
+            name = line[len("# branch.head ") :].strip()
+            current_branch = None if name == "(detached)" else (name or None)
+        elif line.startswith("# branch.upstream "):
+            full = line[len("# branch.upstream ") :].strip()
+            if "/" in full:
+                remote, branch = full.split("/", 1)
+                upstream = Upstream(remote=remote, branch=branch)
+        elif line.startswith("# branch.ab "):
+            parts = line[len("# branch.ab ") :].split()
+            # Format is exactly ``+<ahead> -<behind>``.
+            if len(parts) == 2 and parts[0].startswith("+") and parts[1].startswith("-"):
+                try:
+                    ahead, behind = int(parts[0][1:]), int(parts[1][1:])
+                except ValueError:
+                    ahead = behind = 0
+    # ahead/behind only make sense with an upstream; drop stray counts otherwise
+    # so the result matches the old ``if upstream`` gate byte-for-byte.
+    if upstream is None:
+        ahead = behind = 0
+    return current_branch, upstream, ahead, behind, dirty
 
 
 async def get_status(path: str) -> RepoStatus:
@@ -210,12 +246,16 @@ async def get_status(path: str) -> RepoStatus:
         path: Path to a local repository (validated as an existing directory).
     """
     cwd = validate_repo_path(path)
-    current_branch = await _current_branch(cwd)
-    upstream = await _upstream(cwd)
-    ahead, behind = await _ahead_behind(cwd) if upstream else (0, 0)
+    # One porcelain-v2 invocation yields branch, upstream, ahead/behind, and the
+    # dirty flag together (see :func:`_parse_status_v2`). ``list_remotes`` stays
+    # a separate call -- it reads ``git remote -v``, which v2 status does not
+    # cover. Use run_process for raw stdout: v2 header lines are stable and
+    # newline-delimited, and this avoids CommandResult.output's strip().
+    status_result = await process.run_process(
+        ["git", "status", "--porcelain=v2", "--branch"], cwd=cwd
+    )
+    current_branch, upstream, ahead, behind, dirty = _parse_status_v2(status_result.stdout)
     remotes = await list_remotes(cwd)
-    dirty_result = await run_git(["status", "--porcelain"], cwd=cwd)
-    dirty = bool(dirty_result.output.strip())
     return RepoStatus(
         path=path,
         current_branch=current_branch,

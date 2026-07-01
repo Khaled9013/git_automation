@@ -15,7 +15,9 @@ import * as api from './api.js';
 import { relTimeAgo, initial } from './util.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const POLL_MS = 15000; // live-refresh cadence for the open thread
+// Live-refresh cadence for the open thread. Human comment cadence is slow, so a
+// tight interval just wastes network/CPU; 45s is plenty for a live thread.
+const POLL_MS = 45000;
 
 function stateBadge(state) {
   const open = String(state).toLowerCase() === 'open';
@@ -76,14 +78,49 @@ export function createDetail(root, { toast }) {
   let view = null;     // live render state: { repo, number, sig, els, commentEls: Map }
   let pollTimer = null;
 
+  // While the tab is backgrounded there is no point running the poll at all —
+  // the fetch would be wasted work and browsers throttle timers anyway. We
+  // register a single `visibilitychange` listener (guarded so `show()`/`clear()`
+  // churn can't stack duplicates) that resumes the poll — with an immediate
+  // catch-up refresh — the moment the tab is shown again.
+  let visListenerAdded = false;
+
+  function onVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      // Pause: kill the timer so nothing fires while backgrounded. `current`
+      // is left intact so we know what to resume.
+      stopPoll();
+    } else if (current) {
+      // Became visible again with a thread open — resume polling and do an
+      // immediate refresh so the reader isn't left staring at a stale thread.
+      startPoll();
+      refresh();
+    }
+  }
+  function addVisListener() {
+    if (visListenerAdded) return;
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    visListenerAdded = true;
+  }
+  function removeVisListener() {
+    if (!visListenerAdded) return;
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    visListenerAdded = false;
+  }
+
   function stopPoll() {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   }
   function startPoll() {
     stopPoll();
+    // Don't spin up the timer while the tab is hidden — `onVisibilityChange`
+    // will (re)start it when the tab is shown again.
+    if (document.hidden) return;
     pollTimer = setInterval(() => {
-      // Skip while hidden (another tab is showing) — resumes on next show().
-      if (root.offsetParent === null) return;
+      // Secondary guards: the tab may have been hidden between ticks, and the
+      // pane itself may be hidden (another in-app view is showing). Either way,
+      // skip the fetch; the timer resumes real work on the next visible tick.
+      if (document.hidden || root.offsetParent === null) return;
       refresh();
     }, POLL_MS);
   }
@@ -257,6 +294,7 @@ export function createDetail(root, { toast }) {
       if (view && view.repo === repo && view.number === number) reconcile(issue);
       else fullRender(issue);
       startPoll();
+      addVisListener(); // resume/pause the poll as the tab is shown/hidden
     } catch (err) {
       if (silent) return; // a background refresh failing stays invisible
       toast('error', 'Could not load issue', err.message);
@@ -275,6 +313,6 @@ export function createDetail(root, { toast }) {
   return {
     show,
     refresh,
-    clear: () => { current = null; stopPoll(); placeholder(); },
+    clear: () => { current = null; stopPoll(); removeVisListener(); placeholder(); },
   };
 }

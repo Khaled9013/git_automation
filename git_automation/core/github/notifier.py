@@ -60,6 +60,17 @@ _MIN_POLL_INTERVAL = 10  # hard floor for a manual override
 _DEFAULT_STATE_DIR = Path(".gitauto")
 _STATE_FILENAME = "notifier-state.json"
 
+# Safety ceiling on the persisted seen-map so it can't grow unbounded over
+# months of polling. After each round the map is rebuilt most-recent-first
+# (every id present in the current response, then previously-seen ids that were
+# merely absent this round) and truncated to this many entries. Threads active
+# now are always retained, so re-mention dedup stays correct; a thread absent
+# for a round keeps its entry until _CAP newer distinct ids have pushed it off
+# the tail (an ample grace before it could spuriously re-alert). Evicting an id
+# that later returns with genuinely new activity correctly re-alerts -- that is
+# the desired behavior for a thread revived after long silence.
+_SEEN_CAP = 500
+
 _TITLES = {
     "mention": "GitHub: mentioned you",
     "team_mention": "GitHub: your team was mentioned",
@@ -120,6 +131,38 @@ def _load_seen(path: Path) -> dict[str, str]:
     if isinstance(seen, list):  # legacy format: ids only
         return {str(x): "" for x in seen}
     return {}
+
+
+def _prune_seen(seen: dict[str, str], present_ids: list[str]) -> None:
+    """Bound the seen map in place: keep active threads, cap the rest by recency.
+
+    Rebuilds ``seen`` (mutated in place, so the caller's reference and its
+    persisted format stay unchanged) so that:
+
+    1. Every id in ``present_ids`` (the current poll response) is retained with
+       its recorded ``updated_at`` -- these are the currently-active threads, so
+       re-mention dedup for them stays correct. They are placed first so they sit
+       at the *recent* end and can never be evicted by the cap below.
+    2. Previously-seen ids that were absent this round follow, in their existing
+       (insertion) order. They act as a grace buffer: an id absent for a single
+       round is not immediately forgotten (which would spuriously re-alert it if
+       it reappeared), yet cannot accumulate without limit.
+    3. The whole map is truncated to :data:`_SEEN_CAP` entries. Absent ids fall
+       off the tail only once ``_SEEN_CAP`` newer distinct ids exist -- a large
+       grace. Active ids are never dropped because ``present_ids`` alone is
+       assumed to stay well under the cap (GitHub's unread feed is small).
+
+    Args:
+        seen: The seen map to bound, mutated in place.
+        present_ids: Ids seen in the current poll response (kept unconditionally).
+    """
+    present = set(present_ids)
+    # present_ids first (recent end), then still-relevant absent ids in order.
+    ordered = list(present_ids) + [id_ for id_ in seen if id_ not in present]
+    kept = ordered[:_SEEN_CAP]
+    rebuilt = {id_: seen[id_] for id_ in kept if id_ in seen}
+    seen.clear()
+    seen.update(rebuilt)
 
 
 def _save_seen(path: Path, seen: dict[str, str]) -> None:
@@ -220,6 +263,11 @@ async def poll_once(
             if note.unread and note.reason in _NOTIFY_REASONS:
                 await notify(note)
         seen[note.id] = note.updated_at
+
+    # Bound the seen map so it can't grow without limit across months of polls.
+    # Runs every round (including priming) and after the diff above, so an id
+    # just recorded this round is treated as present and retained.
+    _prune_seen(seen, [note.id for note in notifications])
 
     unread = sum(1 for note in notifications if note.unread)
     logger.info(

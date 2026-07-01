@@ -96,6 +96,122 @@ async def test_get_status_invalid_path_raises() -> None:
     assert exc.value.status_code == 400
 
 
+async def test_get_status_detached_head(tmp_path: Path) -> None:
+    """A detached HEAD reports ``current_branch is None`` (not the SHA)."""
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo)
+    _commit(repo, name="second.txt", content="two")
+    _git(repo, "checkout", "--detach", "HEAD")
+    status = await client.get_status(str(repo))
+    assert status.current_branch is None
+    assert status.upstream is None
+    assert status.ahead == 0
+    assert status.behind == 0
+
+
+async def test_get_status_ahead_and_behind(tmp_path: Path) -> None:
+    """Ahead+behind counts come from the single porcelain-v2 branch header."""
+    remote = tmp_path / "origin.git"
+    subprocess.run(
+        ["git", "init", "--bare", "-b", "main", str(remote)], capture_output=True, check=True
+    )
+    work = _init_repo(tmp_path / "work")
+    _git(work, "remote", "add", "origin", str(remote))
+    _commit(work)
+    await client.push(str(work), "origin", "main", set_upstream=True)
+
+    # Diverge: local moves ahead by one, and origin/main is rewound so we're also
+    # behind by one relative to a freshly fetched upstream.
+    _commit(work, name="local.txt", content="local")  # +1 ahead
+
+    # Push a different commit from a second clone so upstream advances.
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", str(remote), str(clone)], capture_output=True, check=True)
+    _git(clone, "config", "user.name", "Clone")
+    _git(clone, "config", "user.email", "clone@example.com")
+    _git(clone, "config", "commit.gpgsign", "false")
+    _commit(clone, name="remote.txt", content="remote")
+    _git(clone, "push", "origin", "main")
+
+    await client.fetch(str(work), "origin")
+    status = await client.get_status(str(work))
+    assert status.upstream is not None
+    assert status.upstream.remote == "origin"
+    assert status.upstream.branch == "main"
+    assert status.ahead == 1
+    assert status.behind == 1
+
+
+async def test_get_status_dirty_staged_unstaged_untracked_renamed(tmp_path: Path) -> None:
+    """A mix of staged, unstaged, untracked, and renamed changes -> dirty."""
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, name="orig.txt", content="a\n")
+    _commit(repo, name="mod.txt", content="b\n")
+
+    _git(repo, "mv", "orig.txt", "renamed.txt")  # staged rename
+    (repo / "mod.txt").write_text("b changed\n")  # unstaged modification
+    (repo / "staged_new.txt").write_text("new\n")
+    _git(repo, "add", "staged_new.txt")  # staged addition
+    (repo / "untracked.txt").write_text("u\n")  # untracked
+
+    status = await client.get_status(str(repo))
+    assert status.dirty is True
+    assert status.current_branch == "main"
+
+
+def test_parse_status_v2_no_upstream() -> None:
+    out = "# branch.oid abcdef\n# branch.head main\n"
+    branch, upstream, ahead, behind, dirty = client._parse_status_v2(out)
+    assert branch == "main"
+    assert upstream is None
+    assert (ahead, behind, dirty) == (0, 0, False)
+
+
+def test_parse_status_v2_detached() -> None:
+    out = "# branch.oid abcdef\n# branch.head (detached)\n"
+    branch, upstream, ahead, behind, dirty = client._parse_status_v2(out)
+    assert branch is None
+    assert upstream is None
+    assert dirty is False
+
+
+def test_parse_status_v2_ahead_behind_upstream() -> None:
+    out = (
+        "# branch.oid abcdef\n"
+        "# branch.head main\n"
+        "# branch.upstream origin/main\n"
+        "# branch.ab +3 -2\n"
+    )
+    branch, upstream, ahead, behind, dirty = client._parse_status_v2(out)
+    assert branch == "main"
+    assert upstream is not None
+    assert (upstream.remote, upstream.branch) == ("origin", "main")
+    assert (ahead, behind) == (3, 2)
+    assert dirty is False
+
+
+def test_parse_status_v2_upstream_with_slashed_branch() -> None:
+    """A remote branch containing a slash keeps its full path after the remote."""
+    out = "# branch.head feat\n# branch.upstream origin/feature/x\n# branch.ab +0 -0\n"
+    _, upstream, _, _, _ = client._parse_status_v2(out)
+    assert upstream is not None
+    assert upstream.remote == "origin"
+    assert upstream.branch == "feature/x"
+
+
+def test_parse_status_v2_dirty_change_entries() -> None:
+    """Rename (2), tracked change (1), and untracked (?) lines all mark dirty."""
+    out = (
+        "# branch.head main\n"
+        "2 R. N... 100644 100644 100644 aaa aaa R100 new.txt\torig.txt\n"
+        "1 .M N... 100644 100644 100644 bbb bbb mod.txt\n"
+        "? untracked.txt\n"
+    )
+    branch, upstream, ahead, behind, dirty = client._parse_status_v2(out)
+    assert branch == "main"
+    assert dirty is True
+
+
 async def test_list_remotes_invalid_path_raises(tmp_path: Path) -> None:
     not_a_dir = tmp_path / "file"
     not_a_dir.write_text("not a directory")

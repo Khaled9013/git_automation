@@ -20,6 +20,11 @@ const RECONNECT_MAX_MS = 30000; // capped backoff ceiling
 // dedup set so a fresh session re-seeds cleanly (the first diff is silent).
 const SEEN_KEY = 'gh.alerts.seen.v3';
 const PREF_KEY = 'gh.alerts.browserEnabled';
+// Cap the dedup set so a chatty thread (a new `id@updated_at` key on every
+// activity bump) can't grow it without bound and blow the ~5MB localStorage
+// quota. A `Set` preserves insertion order, so "oldest" is simply the first
+// entries; when adding would exceed the cap we evict from the front.
+const SEEN_MAX = 1000;
 
 // Reasons that warrant an active alert (toast / OS notification). Deliberately
 // broad and kept in sync with the backend `_NOTIFY_REASONS`: after your first
@@ -57,17 +62,48 @@ function loadSeen() {
   try {
     const raw = localStorage.getItem(SEEN_KEY);
     const arr = raw ? JSON.parse(raw) : null;
-    return new Set(Array.isArray(arr) ? arr : []);
+    const set = new Set(Array.isArray(arr) ? arr : []);
+    // A set persisted before the cap existed may be oversized — bound it now
+    // (keeping the most-recent keys, which sit at the tail).
+    if (set.size > SEEN_MAX) trimSeen(set, SEEN_MAX);
+    return set;
   } catch {
     return new Set();
   }
 }
 
+// Evict the oldest keys until the set is at most `max` entries. A `Set`
+// iterates in insertion order, so the first keys are the oldest.
+function trimSeen(set, max) {
+  if (set.size <= max) return;
+  const overflow = set.size - max;
+  const it = set.values();
+  for (let i = 0; i < overflow; i++) set.delete(it.next().value);
+}
+
+// Add a key while holding the set to its size cap (evicting oldest first).
+function addSeen(set, key) {
+  if (set.has(key)) return;
+  if (set.size >= SEEN_MAX) trimSeen(set, SEEN_MAX - 1);
+  set.add(key);
+}
+
 function saveSeen(set) {
+  // Bound before persisting: the cap is the primary defence against runaway
+  // localStorage growth, independent of quota errors.
+  trimSeen(set, SEEN_MAX);
   try {
     localStorage.setItem(SEEN_KEY, JSON.stringify([...set]));
   } catch {
-    /* storage unavailable — non-fatal, alerts just re-fire next session */
+    // Likely a QuotaExceededError. Drop the oldest half and retry once so
+    // dedup keeps persisting instead of silently dying (after which old
+    // alerts would re-fire every session).
+    trimSeen(set, Math.floor(set.size / 2));
+    try {
+      localStorage.setItem(SEEN_KEY, JSON.stringify([...set]));
+    } catch {
+      /* storage still unavailable — non-fatal, alerts just re-fire next session */
+    }
   }
 }
 
@@ -177,7 +213,7 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
     if (!Array.isArray(list)) return;
     for (const note of list) {
       if (!note || note.id == null || seen.has(keyOf(note))) continue;
-      seen.add(keyOf(note));
+      addSeen(seen, keyOf(note));
       // Read threads (now included in the stream for history) must never alert.
       if (!note.unread || !isAlertReason(note.reason)) continue;
       const { label } = reasonPhrasing(note.reason);
@@ -192,7 +228,7 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
     if (!Array.isArray(items)) return;
     let changed = false;
     for (const it of items) {
-      if (it && it.id != null && !seen.has(keyOf(it))) { seen.add(keyOf(it)); changed = true; }
+      if (it && it.id != null && !seen.has(keyOf(it))) { addSeen(seen, keyOf(it)); changed = true; }
     }
     if (changed) saveSeen(seen);
   }

@@ -286,3 +286,104 @@ def test_format_titles() -> None:
     assert body == "o/r: Hello"
     title, _ = notifier._format(_note("1", "assign"))
     assert title == "GitHub: assigned to you"
+
+
+# --- seen-map bounding ----------------------------------------------------
+
+
+async def test_seen_map_is_bounded_across_many_rounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Over far more distinct threads than the cap, ``seen`` never exceeds it.
+
+    Each round the response contains one brand-new mention id. Without bounding
+    the map would grow by one every round forever; with it the map is capped.
+    """
+    total = notifier._SEEN_CAP * 3
+    rounds = [[_note(str(i), "mention")] for i in range(total)]
+    _stub_rounds(monkeypatch, rounds)
+
+    async def notify(_n: Notification) -> None:
+        return None
+
+    seen: dict[str, str] = {}
+    for i in range(total):
+        await notifier.poll_once(seen, notify, prime=(i == 0))
+        assert len(seen) <= notifier._SEEN_CAP
+
+    # The most-recent id is always retained; a long-gone one is evicted.
+    assert str(total - 1) in seen
+    assert "0" not in seen
+
+
+async def test_prune_keeps_all_currently_active_threads() -> None:
+    """A response larger than one round's churn keeps every present id."""
+    seen = {str(i): "t" for i in range(notifier._SEEN_CAP + 50)}
+    present = [str(i) for i in range(10)]  # currently-active subset
+    notifier._prune_seen(seen, present)
+    assert len(seen) == notifier._SEEN_CAP
+    # Every active id survives; some stale absent ids were dropped from the tail.
+    for id_ in present:
+        assert id_ in seen
+
+
+async def test_active_thread_re_mention_dedup_survives_pruning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An active thread is not re-alerted round-over-round despite pruning.
+
+    Thread ``hot`` stays present every round (same updated_at) while many other
+    distinct threads churn through, exceeding the cap. Because ``hot`` is always
+    in the current response it is always retained, so its unchanged updated_at is
+    recognized and it never spuriously re-alerts. When it finally bumps its
+    updated_at, it correctly re-alerts exactly once.
+    """
+    hot_old = "2026-06-30T10:00:00Z"
+    hot_new = "2026-06-30T12:00:00Z"
+    churn = notifier._SEEN_CAP * 2
+
+    def hot(updated: str) -> Notification:
+        n = _note("hot", "mention", title="Hot thread")
+        n.updated_at = updated
+        return n
+
+    # Rounds 0..churn-1: hot unchanged + one fresh distinct id each round.
+    rounds: list[list[Notification]] = [
+        [hot(hot_old), _note(f"x{i}", "mention")] for i in range(churn)
+    ]
+    # Final round: hot bumps updated_at (genuine new activity).
+    rounds.append([hot(hot_new)])
+    _stub_rounds(monkeypatch, rounds)
+
+    fired: list[Notification] = []
+
+    async def notify(n: Notification) -> None:
+        fired.append(n)
+
+    seen: dict[str, str] = {}
+    for i in range(len(rounds)):
+        await notifier.poll_once(seen, notify, prime=(i == 0))
+        assert len(seen) <= notifier._SEEN_CAP
+
+    hot_alerts = [n for n in fired if n.id == "hot"]
+    # Exactly one hot alert: the final bumped-updated_at activity. The unchanged
+    # rounds in between never re-alerted (dedup held despite heavy pruning).
+    assert [n.updated_at for n in hot_alerts] == [hot_new]
+
+
+async def test_seen_map_bounded_and_persisted_via_run_poller(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """End-to-end: the persisted state file stays capped and format-compatible."""
+    monkeypatch.setattr(notifier, "notify_send_available", lambda: False)
+
+    rounds = notifier._SEEN_CAP + 20
+    _stub_rounds(monkeypatch, [[_note(str(i), "mention")] for i in range(rounds)])
+
+    async def fast_sleep(_seconds: float) -> None:
+        return None
+
+    await notifier.run_poller(state_dir=tmp_path, sleep=fast_sleep, max_rounds=rounds)
+
+    reloaded = notifier._load_seen(tmp_path / notifier._STATE_FILENAME)
+    assert 0 < len(reloaded) <= notifier._SEEN_CAP
+    # Format is still {"seen": {id: updated_at}} -> _load_seen returns str->str.
+    assert all(isinstance(k, str) and isinstance(v, str) for k, v in reloaded.items())
