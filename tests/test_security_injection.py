@@ -86,6 +86,35 @@ async def test_branch_ops_reject_option_like_name(repo: str, fn) -> None:  # typ
     assert exc.value.code == "invalid_argument"
 
 
+# --- stage/unstage/discard: worktree-confinement path guards --------------
+#
+# ``stage``/``unstage``/``discard`` route each client-supplied path through
+# ``_resolve_worktree_file`` (defense in depth), so a ``../`` traversal, an
+# absolute path, or a ``.git`` target is rejected *before* git is invoked. The
+# autouse ``_no_real_git`` fixture asserts the subprocess is never reached.
+
+
+@pytest.mark.parametrize("fn", [client.stage, client.unstage, client.discard])
+@pytest.mark.parametrize(
+    "bad_path",
+    ["../../etc/passwd", "../OUTSIDE.txt", "/etc/passwd", ".git/config"],
+)
+async def test_stage_ops_reject_traversal_before_git(repo: str, fn, bad_path: str) -> None:  # type: ignore[no-untyped-def]
+    with pytest.raises(GitAutomationError) as exc:
+        await fn(repo, [bad_path])
+    assert exc.value.code == "invalid_argument"
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize("fn", [client.stage, client.unstage, client.discard])
+async def test_stage_ops_reject_traversal_amid_valid_paths(repo: str, fn) -> None:  # type: ignore[no-untyped-def]
+    # A single bad entry in an otherwise-valid list still short-circuits before
+    # any git call, so no partial operation leaks the escape.
+    with pytest.raises(GitAutomationError) as exc:
+        await fn(repo, ["ok.txt", "../../etc/passwd"])
+    assert exc.value.code == "invalid_argument"
+
+
 # --- API layer ------------------------------------------------------------
 
 

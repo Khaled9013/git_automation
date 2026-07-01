@@ -1,4 +1,11 @@
-"""Async wrapper around the GitHub CLI (``gh``) for auth/onboarding and PRs."""
+"""Async wrapper around the GitHub CLI (``gh``) for auth/onboarding and PRs.
+
+Complements :mod:`git_automation.core.github.client` (the direct httpx REST
+client for notifications/issues): this module drives the ``gh`` binary for the
+things that lean on its stored auth session -- ``gh auth status``/``login`` for
+onboarding and ``gh pr create``/``list`` for pull requests. Both live in the one
+``core.github`` package so there is a single GitHub seam for consumers.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +14,7 @@ import re
 
 from git_automation.core import process
 from git_automation.core.errors import GitAutomationError
+from git_automation.core.github.models import PullRequest
 from git_automation.core.process import validate_repo_path
 
 # Matches both modern ("... account NAME") and legacy ("... as NAME") phrasing
@@ -129,7 +137,7 @@ async def pr_create(
     return {"number": int(match.group(2)), "url": match.group(1)}
 
 
-async def pr_list(path: str) -> list:
+async def pr_list(path: str) -> list[PullRequest]:
     """List open pull requests via ``gh pr list`` for the repository at ``path``.
 
     Args:
@@ -142,10 +150,6 @@ async def pr_list(path: str) -> list:
         GitAutomationError: ``gh_pr_list_failed`` if ``gh`` fails or returns
             output that is not valid JSON.
     """
-    # Imported lazily so this module stays importable before the models agent
-    # adds ``PullRequest`` to ``git_automation.core.models``.
-    from git_automation.core.models import PullRequest
-
     cwd = validate_repo_path(path)
     result = await process.run_process(
         [

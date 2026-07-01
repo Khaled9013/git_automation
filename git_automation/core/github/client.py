@@ -51,11 +51,35 @@ _DEFAULT_POLL_INTERVAL = 60
 _client: httpx.AsyncClient | None = None
 _token: str | None = None
 
-# Conditional-request (ETag) cache for ``/notifications`` plus the advertised
-# poll interval, keyed by the request's query string so distinct
-# ``all``/``participating`` views never serve each other's cached body.
-_etag_cache: dict[str, tuple[str, list[Notification]]] = {}
+# Conditional-request cache for ``/notifications`` plus the advertised poll
+# interval, keyed by the request's query string so distinct
+# ``all``/``participating`` views never serve each other's cached body. Each
+# entry is ``(etag, last_modified, notifications)`` where ``etag`` and
+# ``last_modified`` are the validators to replay (either may be ``None``).
+_NotificationCacheEntry = tuple[str | None, str | None, list[Notification]]
+_etag_cache: dict[str, _NotificationCacheEntry] = {}
 _poll_interval: int = _DEFAULT_POLL_INTERVAL
+
+# One lock per cache key makes the read-request-write cycle in
+# :func:`list_notifications` atomic per view. Without it, the background poller
+# and a request handler can interleave around the ``await`` on the network call:
+# a ``304`` could return a list captured *before* an interleaving ``200`` wrote
+# fresh state (a stale snapshot), and two concurrent ``200``s could race so the
+# last writer clobbers the newer cache entry. Serialising per key closes both.
+_cache_locks: dict[str, asyncio.Lock] = {}
+
+
+def _cache_lock(cache_key: str) -> asyncio.Lock:
+    """Return the per-``cache_key`` lock, creating it on first use.
+
+    Creation is safe without its own lock because the event loop only switches
+    at ``await`` points and this function contains none: the ``setdefault`` runs
+    to completion atomically for a given key.
+    """
+    lock = _cache_locks.get(cache_key)
+    if lock is None:
+        lock = _cache_locks.setdefault(cache_key, asyncio.Lock())
+    return lock
 
 
 # --- validation (security guards, preserved) ---------------------------------
@@ -342,11 +366,20 @@ async def list_notifications(
 ) -> list[Notification]:
     """List the authenticated user's notification threads via ``GET /notifications``.
 
-    Uses a conditional request: the previous ``ETag`` is sent as
-    ``If-None-Match`` and a ``304 Not Modified`` returns the cached list without
+    Uses a conditional request: the previously seen ``ETag`` (as
+    ``If-None-Match``) and/or ``Last-Modified`` (as ``If-Modified-Since``) are
+    replayed and a ``304 Not Modified`` returns the cached list without
     re-parsing (and, importantly for the poller, without consuming a rate-limit
-    unit). The response's ``X-Poll-Interval`` is captured for
+    unit). GitHub serves an *empty* ETag for ``/notifications`` but does populate
+    ``Last-Modified``, so the ``Last-Modified`` path is what actually keeps polls
+    cheap here. The response's ``X-Poll-Interval`` is captured for
     :func:`notifications_poll_interval`.
+
+    Concurrency: the read-request-write cycle is serialised per view by a
+    per-``cache_key`` :class:`asyncio.Lock`, so the background poller and request
+    handlers cannot interleave to serve a stale snapshot or clobber fresher cache
+    state. A ``304`` returns the value cached under the lock at that moment, never
+    a snapshot captured before an interleaving write.
 
     Args:
         all: Include read notifications (``?all=true``), not just unread.
@@ -371,42 +404,58 @@ async def list_notifications(
         params["participating"] = "true"
     cache_key = f"all={all}&participating={participating}"
 
-    extra_headers: dict[str, str] = {}
-    cached = _etag_cache.get(cache_key)
-    if cached is not None:
-        extra_headers["If-None-Match"] = cached[0]
+    # Hold the per-key lock across read-request-write so a 304 resolves against
+    # the cache state at *this* moment and concurrent 200s cannot clobber each
+    # other (last-writer-wins on stale data).
+    async with _cache_lock(cache_key):
+        cached = _etag_cache.get(cache_key)
+        extra_headers: dict[str, str] = {}
+        if cached is not None:
+            cached_etag, cached_last_modified, _ = cached
+            if cached_etag:
+                extra_headers["If-None-Match"] = cached_etag
+            if cached_last_modified:
+                extra_headers["If-Modified-Since"] = cached_last_modified
 
-    resp = await _request(
-        "GET",
-        "/notifications",
-        error_code="github_notifications_failed",
-        params=params or None,
-        extra_headers=extra_headers or None,
-        allow_304=True,
-    )
+        resp = await _request(
+            "GET",
+            "/notifications",
+            error_code="github_notifications_failed",
+            params=params or None,
+            extra_headers=extra_headers or None,
+            allow_304=True,
+        )
 
-    poll = resp.headers.get("X-Poll-Interval")
-    if poll:
-        try:
-            _poll_interval = int(poll)
-        except ValueError:
-            pass
+        poll = resp.headers.get("X-Poll-Interval")
+        if poll:
+            try:
+                _poll_interval = int(poll)
+            except ValueError:
+                pass
 
-    if resp.status_code == 304 and cached is not None:
-        return cached[1]
+        if resp.status_code == 304:
+            # Re-read under the lock: another awaited call may have replaced the
+            # entry while we were on the wire. Never return a pre-await snapshot.
+            current = _etag_cache.get(cache_key)
+            if current is not None:
+                return current[2]
+            return []
 
-    data = resp.json() or []
-    notifications = [_to_notification(item) for item in data]
+        data = resp.json() or []
+        notifications = [_to_notification(item) for item in data]
 
-    # Only cache a *usable* ETag. An empty validator (GitHub returns ``W/""``) is
-    # dropped so we never send it as If-None-Match — otherwise GitHub 304s every
-    # request and the notifications list freezes on stale data.
-    etag = _usable_etag(resp.headers.get("ETag"))
-    if etag:
-        _etag_cache[cache_key] = (etag, notifications)
-    else:
-        _etag_cache.pop(cache_key, None)
-    return notifications
+        # Cache a *usable* ETag and/or the ``Last-Modified`` validator. An empty
+        # ETag (GitHub returns ``W/""`` for this endpoint) is dropped so we never
+        # send it as If-None-Match — otherwise GitHub 304s every request and the
+        # list freezes on stale data. ``Last-Modified`` fills that gap: it is
+        # populated for ``/notifications`` and drives cheap conditional polls.
+        etag = _usable_etag(resp.headers.get("ETag"))
+        last_modified = resp.headers.get("Last-Modified")
+        if etag or last_modified:
+            _etag_cache[cache_key] = (etag, last_modified, notifications)
+        else:
+            _etag_cache.pop(cache_key, None)
+        return notifications
 
 
 async def mark_notification_read(thread_id: str) -> None:

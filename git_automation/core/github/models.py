@@ -62,3 +62,14 @@ class IssueDetail(BaseModel):
     labels: list[str]
     comments: list[Comment]
     url: str
+
+
+class PullRequest(BaseModel):
+    """A GitHub pull request (populated by the ``gh`` integration)."""
+
+    number: int
+    title: str
+    url: str
+    state: str
+    head: str
+    base: str

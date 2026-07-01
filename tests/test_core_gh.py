@@ -1,4 +1,4 @@
-"""Tests for the async gh client. No real gh auth call is ever made."""
+"""Tests for the ``gh`` CLI wrapper. No real gh auth call is ever made."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pytest
 
 from git_automation.core import process
 from git_automation.core.errors import GitAutomationError
-from git_automation.core.gh import client
+from git_automation.core.github import gh_cli as client
 from git_automation.core.process import ProcessResult
 
 LOGGED_IN_MODERN = "github.com\n  ✓ Logged in to github.com account octocat (keyring)\n"

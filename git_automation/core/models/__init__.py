@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+# ``PullRequest`` is a GitHub concept and now lives beside the other GitHub
+# models in :mod:`git_automation.core.github.models`. It is re-exported here for
+# backward compatibility so any lingering ``from core.models import PullRequest``
+# keeps working; new code should import it from ``core.github.models``.
+from git_automation.core.github.models import PullRequest as PullRequest
+
 
 class Remote(BaseModel):
     """A configured git remote."""
@@ -256,17 +262,6 @@ class FileHunks(BaseModel):
     file: str
     binary: bool
     hunks: list[Hunk]
-
-
-class PullRequest(BaseModel):
-    """A GitHub pull request (populated by the ``gh`` integration)."""
-
-    number: int
-    title: str
-    url: str
-    state: str
-    head: str
-    base: str
 
 
 __all__ = [

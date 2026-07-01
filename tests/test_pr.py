@@ -15,24 +15,10 @@ from fastapi.testclient import TestClient
 
 from git_automation.core import process
 from git_automation.core.errors import GitAutomationError
-from git_automation.core.gh import client
+from git_automation.core.github import gh_cli as client
+from git_automation.core.github.models import PullRequest  # noqa: F401
 from git_automation.core.process import ProcessResult
 from git_automation.web.api import pr as pr_api
-
-# ``PullRequest`` is added to core.models by a separate agent. The PR-listing
-# tests exercise the real mapping when it is available and skip cleanly until
-# then; the create-flow tests never need it.
-try:
-    from git_automation.core.models import PullRequest  # noqa: F401
-
-    _HAS_PULL_REQUEST = True
-except ImportError:  # pragma: no cover - depends on integration ordering
-    _HAS_PULL_REQUEST = False
-
-requires_pr_model = pytest.mark.skipif(
-    not _HAS_PULL_REQUEST,
-    reason="PullRequest model not yet added to core.models",
-)
 
 PR_URL = "https://github.com/octocat/hello/pull/42"
 PR_LIST_JSON = (
@@ -135,7 +121,6 @@ async def test_pr_create_rejects_option_like_base(
 # --- pr_list --------------------------------------------------------------
 
 
-@requires_pr_model
 async def test_pr_list_builds_json_argv_and_cwd(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -161,7 +146,6 @@ async def test_pr_list_builds_json_argv_and_cwd(
     assert pr.base == "main"
 
 
-@requires_pr_model
 async def test_pr_list_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_run(monkeypatch, lambda a, c, s: ProcessResult(0, "[]", ""))
     assert await client.pr_list(str(tmp_path)) == []
@@ -175,7 +159,6 @@ async def test_pr_list_surfaces_gh_failure(monkeypatch: pytest.MonkeyPatch, tmp_
     assert "remote" in exc.value.message
 
 
-@requires_pr_model
 async def test_pr_list_invalid_json_is_an_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -209,7 +192,6 @@ def test_router_create_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     assert recorded[0]["cwd"] == str(tmp_path)
 
 
-@requires_pr_model
 def test_router_list_endpoint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_run(monkeypatch, lambda a, c, s: ProcessResult(0, PR_LIST_JSON, ""))
     resp = _router_client().get("/api/gh/pr/list", params={"path": str(tmp_path)})

@@ -31,6 +31,7 @@ def _reset_client_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(client, "_client", None)
     monkeypatch.setattr(client, "_token", "test-token")
     monkeypatch.setattr(client, "_etag_cache", {})
+    monkeypatch.setattr(client, "_cache_locks", {})
     monkeypatch.setattr(client, "_poll_interval", 60)
     yield
 
@@ -279,6 +280,83 @@ async def test_list_notifications_empty_etag_never_cached(
 )
 def test_usable_etag(etag, usable) -> None:
     assert client._usable_etag(etag) == usable
+
+
+async def test_list_notifications_last_modified_conditional(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GitHub's empty ETag is unusable, so ``Last-Modified`` drives the 304.
+
+    The first 200 captures ``Last-Modified``; the next poll replays it as
+    ``If-Modified-Since`` and a 304 serves the cached list without re-parsing.
+    """
+    last_modified = "Wed, 01 Jul 2026 10:00:00 GMT"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("If-Modified-Since") == last_modified:
+            return httpx.Response(304, headers={"X-Poll-Interval": "90"})
+        # GitHub sends an *empty* ETag here but a real Last-Modified.
+        return httpx.Response(
+            200,
+            json=NOTIFICATIONS_JSON,
+            headers={"ETag": 'W/""', "Last-Modified": last_modified},
+        )
+
+    recorded = _install(monkeypatch, handler)
+
+    first = await client.list_notifications()
+    assert len(first) == 2
+    # No conditional header on the very first request.
+    assert "If-Modified-Since" not in recorded[0].headers
+    # The empty ETag must never be echoed back.
+    assert "If-None-Match" not in recorded[1].headers if len(recorded) > 1 else True
+
+    second = await client.list_notifications()
+    assert recorded[1].headers["If-Modified-Since"] == last_modified
+    assert "If-None-Match" not in recorded[1].headers
+    # 304 -> the cached objects are returned unchanged.
+    assert second == first
+    assert client.notifications_poll_interval() == 90
+
+
+async def test_list_notifications_concurrent_calls_are_serialised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two concurrent list_notifications() against one transport stay consistent.
+
+    A per-cache-key lock serialises the read-request-write cycle so a 304 can
+    never return a snapshot captured before an interleaving 200 wrote fresh
+    state, and neither concurrent call clobbers the other's cache entry.
+    """
+    last_modified = "Wed, 01 Jul 2026 10:00:00 GMT"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("If-Modified-Since") == last_modified:
+            return httpx.Response(304)
+        return httpx.Response(
+            200,
+            json=NOTIFICATIONS_JSON,
+            headers={"Last-Modified": last_modified},
+        )
+
+    _install(monkeypatch, handler)
+
+    # Fire both before awaiting either: the lock must force them to run one after
+    # the other, so the second sees the cache the first wrote (a 304 that still
+    # yields the correct list) rather than an empty/torn read.
+    import asyncio as _asyncio
+
+    a, b = await _asyncio.gather(
+        client.list_notifications(),
+        client.list_notifications(),
+    )
+    assert len(a) == 2
+    assert len(b) == 2
+    assert a == b
+    # Exactly one cache entry, holding the mapped notifications.
+    (entry,) = client._etag_cache.values()
+    assert entry[1] == last_modified
+    assert len(entry[2]) == 2
 
 
 async def test_list_notifications_unparseable_number_is_none(

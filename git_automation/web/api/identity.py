@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from git_automation.core.gh.client import login_instructions, login_with_token
 from git_automation.core.git.client import set_global_identity
+from git_automation.core.github.gh_cli import login_instructions, login_with_token
 from git_automation.core.identity import get_identity_state
 from git_automation.core.models import IdentityState
 

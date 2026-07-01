@@ -11,7 +11,8 @@ and forwards each published event as JSON until the client disconnects. It carri
 no privileges, but — like the terminal/watch sockets — a cross-site page could
 open it against ``127.0.0.1`` with no CORS preflight (Cross-Site WebSocket
 Hijacking) and observe the user's GitHub activity, so we reject any non-loopback
-``Origin`` *before* accepting the handshake, reusing the terminal module's guard.
+``Origin`` *before* accepting the handshake, reusing the shared guard in
+:mod:`git_automation.web.ws`.
 
 ``POST /github/test-notification`` fires a one-off alert on demand so the user can
 confirm OS notifications work; it returns ``200`` even when ``notify-send`` is
@@ -27,11 +28,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from git_automation.core.github import notifier
 from git_automation.core.github.hub import hub
-from git_automation.web.api.terminal import (
-    _WS_POLICY_VIOLATION,
-    _origin_allowed,
-    _safe_close,
-)
+from git_automation.web.ws import WS_POLICY_VIOLATION, origin_allowed, safe_close
 
 router = APIRouter()
 
@@ -50,11 +47,11 @@ async def _forward_events(queue: asyncio.Queue[dict], websocket: WebSocket) -> N
 @router.websocket("/github/events")
 async def github_events_socket(websocket: WebSocket) -> None:
     """Forward published GitHub events to the client until it disconnects."""
-    if not _origin_allowed(websocket.headers.get("origin")):
+    if not origin_allowed(websocket.headers.get("origin")):
         # Reject the handshake (no accept) so a foreign-origin page can never
         # observe the user's GitHub activity. Defends against Cross-Site WS
         # Hijacking exactly as the terminal/watch sockets do.
-        await websocket.close(code=_WS_POLICY_VIOLATION)
+        await websocket.close(code=WS_POLICY_VIOLATION)
         return
     await websocket.accept()
 
@@ -63,7 +60,7 @@ async def github_events_socket(websocket: WebSocket) -> None:
 
     # When the forwarder stops on its own (send failed), unblock the receive loop.
     def _on_forward_done(_task: asyncio.Task[None]) -> None:
-        asyncio.create_task(_safe_close(websocket))
+        asyncio.create_task(safe_close(websocket))
 
     forward_task.add_done_callback(_on_forward_done)
 
@@ -82,7 +79,7 @@ async def github_events_socket(websocket: WebSocket) -> None:
             await forward_task
         # Always drop our subscriber queue so the hub never leaks it.
         hub.unsubscribe(queue)
-        await _safe_close(websocket)
+        await safe_close(websocket)
 
 
 @router.post("/github/test-notification")

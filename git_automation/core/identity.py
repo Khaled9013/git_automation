@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from git_automation.core.gh.client import auth_status
 from git_automation.core.git.client import get_global_identity
+from git_automation.core.github.gh_cli import auth_status
 from git_automation.core.models import IdentityState
 
 

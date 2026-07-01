@@ -6,6 +6,8 @@ Covers the hardening applied in the Slice-3 security pass:
   validated repository (no ``../`` escape, no absolute path, no ``.git`` write).
 * The PTY WebSocket rejects foreign-origin handshakes (Cross-Site WebSocket
   Hijacking) while still accepting loopback / non-browser clients.
+* The web entry point fails closed on a non-loopback bind host (the whole trust
+  model rests on ``127.0.0.1``), with an explicit env opt-out.
 """
 
 from __future__ import annotations
@@ -19,9 +21,10 @@ from fastapi.testclient import TestClient
 
 from git_automation.core.errors import GitAutomationError
 from git_automation.core.git import client
+from git_automation.web import __main__ as web_main
 from git_automation.web.api import merge as merge_api
 from git_automation.web.api import register_error_handlers
-from git_automation.web.api.terminal import _origin_allowed
+from git_automation.web.ws import origin_allowed
 
 
 def _init_repo(path: Path) -> Path:
@@ -144,18 +147,18 @@ def test_conflict_endpoint_rejects_traversal(merge_client: TestClient, tmp_path:
 
 
 def test_origin_allowed_loopback_and_missing() -> None:
-    assert _origin_allowed(None) is True  # non-browser client (CLI/tests)
-    assert _origin_allowed("http://localhost:8000") is True
-    assert _origin_allowed("http://127.0.0.1:8000") is True
-    assert _origin_allowed("http://[::1]:8000") is True
+    assert origin_allowed(None) is True  # non-browser client (CLI/tests)
+    assert origin_allowed("http://localhost:8000") is True
+    assert origin_allowed("http://127.0.0.1:8000") is True
+    assert origin_allowed("http://[::1]:8000") is True
 
 
 def test_origin_allowed_rejects_foreign_sites() -> None:
-    assert _origin_allowed("https://evil.example.com") is False
-    assert _origin_allowed("http://attacker.test:8000") is False
+    assert origin_allowed("https://evil.example.com") is False
+    assert origin_allowed("http://attacker.test:8000") is False
     # Look-alike host names must not slip through.
-    assert _origin_allowed("http://127.0.0.1.evil.com") is False
-    assert _origin_allowed("http://notlocalhost") is False
+    assert origin_allowed("http://127.0.0.1.evil.com") is False
+    assert origin_allowed("http://notlocalhost") is False
 
 
 def test_terminal_ws_rejects_foreign_origin(tmp_path: Path) -> None:
@@ -175,3 +178,40 @@ def test_terminal_ws_rejects_foreign_origin(tmp_path: Path) -> None:
         ):
             pass
     assert exc.value.code == 1008
+
+
+# --- Entry point: fail-closed on a non-loopback bind host -----------------
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost", "127.0.0.5"])
+def test_resolve_host_allows_loopback(monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+    monkeypatch.setenv("GITAUTO_HOST", host)
+    monkeypatch.delenv("GITAUTO_ALLOW_NONLOOPBACK", raising=False)
+    assert web_main._resolve_host() == host
+
+
+def test_resolve_host_defaults_to_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITAUTO_HOST", raising=False)
+    monkeypatch.delenv("GITAUTO_ALLOW_NONLOOPBACK", raising=False)
+    assert web_main._resolve_host() == "127.0.0.1"
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com"])
+def test_resolve_host_rejects_non_loopback(monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+    monkeypatch.setenv("GITAUTO_HOST", host)
+    monkeypatch.delenv("GITAUTO_ALLOW_NONLOOPBACK", raising=False)
+    with pytest.raises(SystemExit):
+        web_main._resolve_host()
+
+
+def test_resolve_host_non_loopback_opt_out_warns_and_proceeds(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("GITAUTO_HOST", "0.0.0.0")
+    monkeypatch.setenv("GITAUTO_ALLOW_NONLOOPBACK", "1")
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger=web_main.logger.name):
+        assert web_main._resolve_host() == "0.0.0.0"
+    assert any("SECURITY" in rec.message for rec in caplog.records)

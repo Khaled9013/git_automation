@@ -14,8 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
 from git_automation import __version__
-from git_automation.core.gh import client as gh_client
-from git_automation.core.github import notifier
+from git_automation.core.github import gh_cli, notifier
 from git_automation.core.github.hub import hub
 from git_automation.web.api import api_router, register_error_handlers
 
@@ -34,7 +33,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     task: asyncio.Task[None] | None = None
     try:
-        authenticated, _ = await gh_client.auth_status()
+        authenticated, _ = await gh_cli.auth_status()
         if authenticated:
             # One poll loop drives both OS notifications and the live browser
             # push (via hub.publish -> WS /api/github/events).

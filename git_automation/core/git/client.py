@@ -354,14 +354,36 @@ async def get_changes(path: str) -> Changes:
 
 
 async def stage(path: str, files: list[str]) -> CommandResult:
-    """Stage ``files`` in the repository at ``path`` (``git add``)."""
+    """Stage ``files`` in the repository at ``path`` (``git add``).
+
+    Each caller-supplied path is confined to the worktree (outside ``.git``) via
+    :func:`_resolve_worktree_file` before it reaches git, so a traversal
+    (``../``) or absolute path is rejected at the app layer rather than relying
+    on git's own pathspec handling.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if any path escapes the
+            worktree or enters ``.git``.
+    """
     cwd = validate_repo_path(path)
+    for file in files:
+        _resolve_worktree_file(cwd, file)
     return await run_git(["add", "--", *files], cwd=cwd)
 
 
 async def unstage(path: str, files: list[str]) -> CommandResult:
-    """Unstage ``files`` in the repository at ``path`` (``git restore --staged``)."""
+    """Unstage ``files`` in the repository at ``path`` (``git restore --staged``).
+
+    Each path is confined to the worktree (outside ``.git``) via
+    :func:`_resolve_worktree_file` before reaching git.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if any path escapes the
+            worktree or enters ``.git``.
+    """
     cwd = validate_repo_path(path)
+    for file in files:
+        _resolve_worktree_file(cwd, file)
     return await run_git(["restore", "--staged", "--", *files], cwd=cwd)
 
 
@@ -369,9 +391,16 @@ async def discard(path: str, files: list[str]) -> CommandResult:
     """Discard working-tree changes to ``files`` (``git restore``).
 
     Destructive: overwrites the working-tree copy with the index version. The
-    UI confirms before calling this.
+    UI confirms before calling this. Each path is confined to the worktree
+    (outside ``.git``) via :func:`_resolve_worktree_file` before reaching git.
+
+    Raises:
+        GitAutomationError: ``invalid_argument`` (400) if any path escapes the
+            worktree or enters ``.git``.
     """
     cwd = validate_repo_path(path)
+    for file in files:
+        _resolve_worktree_file(cwd, file)
     return await run_git(["restore", "--", *files], cwd=cwd)
 
 

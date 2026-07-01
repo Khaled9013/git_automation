@@ -13,8 +13,8 @@ Like the terminal WebSocket, this endpoint is only safe because the app binds
 CORS preflight (Cross-Site WebSocket Hijacking), so we reject any non-loopback
 ``Origin`` with close code 1008 *before* accepting the handshake. A missing
 ``Origin`` (non-browser clients/tests) is allowed. The Origin check and the
-safe-close helper are reused verbatim from :mod:`git_automation.web.api.terminal`
-to keep a single source of truth.
+safe-close helper are reused from :mod:`git_automation.web.ws` to keep a single
+source of truth.
 
 Each socket owns exactly one watcher task. The watcher is always cancelled and
 awaited -- so its background OS watcher is torn down -- when the socket closes
@@ -30,11 +30,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from git_automation.core.errors import GitAutomationError
 from git_automation.core.watcher import watch_repo
-from git_automation.web.api.terminal import (
-    _WS_POLICY_VIOLATION,
-    _origin_allowed,
-    _safe_close,
-)
+from git_automation.web.ws import WS_POLICY_VIOLATION, origin_allowed, safe_close
 
 router = APIRouter()
 
@@ -59,10 +55,10 @@ async def _stream_changes(path: str, websocket: WebSocket) -> None:
 @router.websocket("/watch")
 async def watch_socket(websocket: WebSocket, path: str = Query(...)) -> None:
     """Stream ``{"type":"change","paths":[...]}`` frames for the repo at ``path``."""
-    if not _origin_allowed(websocket.headers.get("origin")):
+    if not origin_allowed(websocket.headers.get("origin")):
         # Reject the handshake (no accept) so a foreign-origin page can never
         # observe repository activity. Defends against Cross-Site WS Hijacking.
-        await websocket.close(code=_WS_POLICY_VIOLATION)
+        await websocket.close(code=WS_POLICY_VIOLATION)
         return
     await websocket.accept()
 
@@ -74,14 +70,14 @@ async def watch_socket(websocket: WebSocket, path: str = Query(...)) -> None:
         validate_repo_path(path)
     except GitAutomationError as exc:
         await websocket.send_json({"type": "error", "code": exc.code, "message": exc.message})
-        await _safe_close(websocket)
+        await safe_close(websocket)
         return
 
     watch_task = asyncio.create_task(_stream_changes(path, websocket))
 
     # When the watcher stops on its own (error), unblock the receive loop below.
     def _on_watch_done(_task: asyncio.Task[None]) -> None:
-        asyncio.create_task(_safe_close(websocket))
+        asyncio.create_task(safe_close(websocket))
 
     watch_task.add_done_callback(_on_watch_done)
 
@@ -100,4 +96,4 @@ async def watch_socket(websocket: WebSocket, path: str = Query(...)) -> None:
         # background OS watcher is torn down (no leaked watch task).
         with suppress(asyncio.CancelledError):
             await watch_task
-        await _safe_close(websocket)
+        await safe_close(websocket)
