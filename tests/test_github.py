@@ -11,6 +11,8 @@ previous ``gh``-subprocess implementation.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from fastapi import APIRouter, FastAPI
@@ -149,8 +151,13 @@ ISSUE_DETAIL_JSON = {
 }
 
 ISSUE_COMMENTS_JSON = [
-    {"user": {"login": "alice"}, "body": "I can repro.", "created_at": "2026-06-30T12:00:00Z"},
-    {"user": {"login": "bob"}, "body": "On it.", "created_at": "2026-06-30T13:00:00Z"},
+    {
+        "id": 5001,
+        "user": {"login": "alice"},
+        "body": "I can repro.",
+        "created_at": "2026-06-30T12:00:00Z",
+    },
+    {"id": 5002, "user": {"login": "bob"}, "body": "On it.", "created_at": "2026-06-30T13:00:00Z"},
 ]
 
 
@@ -229,6 +236,49 @@ async def test_list_notifications_etag_and_poll_interval(
     # 304 -> same cached objects returned without re-parsing.
     assert second == first
     assert client.notifications_poll_interval() == 90
+
+
+async def test_list_notifications_empty_etag_never_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GitHub's empty weak validator (W/"") must NOT be cached or echoed back.
+
+    Regression: caching W/"" and sending it as If-None-Match makes GitHub answer
+    304 to every request, freezing the notifications list on stale data while the
+    uncached issues list keeps updating. Each poll must instead refetch fresh.
+    """
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        # GitHub returns a real body but an EMPTY weak ETag.
+        return httpx.Response(200, json=NOTIFICATIONS_JSON, headers={"ETag": 'W/""'})
+
+    _install(monkeypatch, handler)
+
+    await client.list_notifications()
+    await client.list_notifications()
+
+    # The empty ETag is dropped: never cached, never sent as If-None-Match, so the
+    # second poll is a fresh 200 (not a stale-serving conditional request).
+    assert client._etag_cache == {}
+    assert "If-None-Match" not in calls[0].headers
+    assert "If-None-Match" not in calls[1].headers
+
+
+@pytest.mark.parametrize(
+    ("etag", "usable"),
+    [
+        ('W/""', None),
+        ('""', None),
+        ("", None),
+        (None, None),
+        ('W/"abc123"', 'W/"abc123"'),
+        ('"strong"', '"strong"'),
+    ],
+)
+def test_usable_etag(etag, usable) -> None:
+    assert client._usable_etag(etag) == usable
 
 
 async def test_list_notifications_unparseable_number_is_none(
@@ -336,6 +386,24 @@ async def test_mark_notification_read_rejects_non_numeric_id(
         await client.mark_notification_read(bad_id)
     assert exc.value.code == "invalid_argument"
     assert recorded == []
+
+
+async def test_mark_all_notifications_read_method_path_and_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded = _install(monkeypatch, _json({}, status=202))
+    await client.mark_all_notifications_read()
+    req = recorded[0]
+    assert req.method == "PUT"
+    assert req.url.path == "/notifications"
+    assert json.loads(req.content) == {"read": True}
+
+
+async def test_mark_all_notifications_read_gh_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install(monkeypatch, _json({"message": "Forbidden"}, status=403))
+    with pytest.raises(GitAutomationError) as exc:
+        await client.mark_all_notifications_read()
+    assert exc.value.code == "github_mark_read_failed"
 
 
 # --- list_issues -------------------------------------------------------------
@@ -485,9 +553,11 @@ async def test_get_issue_two_requests_and_mapping(monkeypatch: pytest.MonkeyPatc
     assert detail.assignees == ["hubot"]
     assert detail.labels == ["bug"]
     assert len(detail.comments) == 2
+    assert detail.comments[0].id == 5001  # stable identity for live-thread reconcile
     assert detail.comments[0].author == "alice"
     assert detail.comments[0].body == "I can repro."
     assert detail.comments[0].created_at == "2026-06-30T12:00:00Z"
+    assert detail.comments[1].id == 5002
     assert detail.url == "https://github.com/octocat/hello/issues/42"
 
 
@@ -693,6 +763,17 @@ def test_router_mark_read(monkeypatch: pytest.MonkeyPatch) -> None:
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
     assert recorded[0].url.path == "/notifications/threads/100"
+
+
+def test_router_mark_all_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(client, "_client", None)
+    monkeypatch.setattr(client, "_token", "test-token")
+    recorded = _install(monkeypatch, _json({}, status=202))
+    resp = _router_client().post("/api/github/notifications/read-all")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert recorded[0].method == "PUT"
+    assert recorded[0].url.path == "/notifications"
 
 
 def test_router_issues(monkeypatch: pytest.MonkeyPatch) -> None:

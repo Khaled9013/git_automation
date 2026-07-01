@@ -278,7 +278,9 @@ def _to_issue_summary(item: dict, repo_override: str | None = None) -> IssueSumm
 
 def _to_comment(item: dict) -> Comment:
     """Map one REST issue-comment object to :class:`Comment`."""
+    raw_id = item.get("id")
     return Comment(
+        id=raw_id if isinstance(raw_id, int) else None,
         author=(item.get("user") or {}).get("login", ""),
         body=item.get("body", ""),
         created_at=item.get("created_at", ""),
@@ -304,6 +306,26 @@ def _to_notification(item: dict) -> Notification:
 
 
 # --- public interface (unchanged signatures + model outputs) -----------------
+
+
+def _usable_etag(etag: str | None) -> str | None:
+    """Return ``etag`` only if it carries a real validator, else ``None``.
+
+    GitHub's ``/notifications`` can return an *empty* weak validator (``W/""`` or
+    ``""``). Echoing that back as ``If-None-Match`` makes GitHub answer ``304`` to
+    *every* subsequent request regardless of new activity, so our cache would keep
+    serving a stale list forever (the notifications pane appears frozen while the
+    uncached issues pane updates fine). Treating an empty validator as "no ETag"
+    forces a fresh ``200`` fetch each poll, which is correct behaviour.
+    """
+    if not etag:
+        return None
+    core = etag.strip()
+    if core.startswith(("W/", "w/")):
+        core = core[2:].strip()
+    if core.strip('"') == "":
+        return None
+    return etag
 
 
 def notifications_poll_interval() -> int:
@@ -376,9 +398,14 @@ async def list_notifications(
     data = resp.json() or []
     notifications = [_to_notification(item) for item in data]
 
-    etag = resp.headers.get("ETag")
+    # Only cache a *usable* ETag. An empty validator (GitHub returns ``W/""``) is
+    # dropped so we never send it as If-None-Match — otherwise GitHub 304s every
+    # request and the notifications list freezes on stale data.
+    etag = _usable_etag(resp.headers.get("ETag"))
     if etag:
         _etag_cache[cache_key] = (etag, notifications)
+    else:
+        _etag_cache.pop(cache_key, None)
     return notifications
 
 
@@ -394,6 +421,23 @@ async def mark_notification_read(thread_id: str) -> None:
         "PATCH",
         f"/notifications/threads/{thread_id}",
         error_code="github_mark_read_failed",
+    )
+
+
+async def mark_all_notifications_read() -> None:
+    """Mark every notification thread read via ``PUT /notifications``.
+
+    GitHub marks all threads read as of "now" and answers ``202``/``205`` (no
+    body), so nothing is returned.
+
+    Raises:
+        GitAutomationError: ``github_mark_read_failed`` on an API error.
+    """
+    await _request(
+        "PUT",
+        "/notifications",
+        error_code="github_mark_read_failed",
+        json_body={"read": True},
     )
 
 
@@ -513,7 +557,9 @@ async def add_comment(repo: str, number: int, body: str) -> Comment:
         json_body={"body": body},
     )
     data = resp.json() or {}
+    raw_id = data.get("id")
     return Comment(
+        id=raw_id if isinstance(raw_id, int) else None,
         author=(data.get("user") or {}).get("login", ""),
         body=data.get("body", body),
         created_at=data.get("created_at", ""),

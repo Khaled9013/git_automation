@@ -16,15 +16,34 @@ import * as api from './api.js';
 const FALLBACK_INTERVAL_MS = 90000; // slow poll, used ONLY while the socket is down
 const RECONNECT_BASE_MS = 1000; // first reconnect delay
 const RECONNECT_MAX_MS = 30000; // capped backoff ceiling
-// v2: keys are now `id@updated_at` (was bare ids). A fresh key avoids treating
-// the whole inbox as new on upgrade — the first diff just re-seeds silently.
-const SEEN_KEY = 'gh.alerts.seen.v2';
+// Keys are `id@updated_at`. Bumping the version resets a possibly-stuck local
+// dedup set so a fresh session re-seeds cleanly (the first diff is silent).
+const SEEN_KEY = 'gh.alerts.seen.v3';
 const PREF_KEY = 'gh.alerts.browserEnabled';
 
-/** reasons that warrant an active alert (toast / OS notification). */
+// Reasons that warrant an active alert (toast / OS notification). Deliberately
+// broad and kept in sync with the backend `_NOTIFY_REASONS`: after your first
+// mention GitHub auto-subscribes you, so a REPEAT mention on the same thread
+// usually arrives as `comment`/`author`, not `mention`. Including those is what
+// makes the 2nd/3rd/4th mention alert you, not just the first.
+const ALERT_REASONS = new Set([
+  'mention', 'team_mention', 'assign', 'assigned',
+  'review_requested', 'comment', 'author', 'manual', 'invitation',
+]);
 function isAlertReason(reason) {
-  const r = String(reason || '').toLowerCase();
-  return r === 'mention' || r === 'team_mention' || r === 'assign' || r === 'assigned';
+  return ALERT_REASONS.has(String(reason || '').toLowerCase());
+}
+
+/** Human phrasing for a reason: toast title + the OS-notification verb. */
+function reasonPhrasing(reason) {
+  switch (String(reason || '').toLowerCase()) {
+    case 'mention':
+    case 'team_mention': return { label: 'New mention', verb: 'mentioned you in' };
+    case 'assign':
+    case 'assigned': return { label: 'New assignment', verb: 'assigned you to' };
+    case 'review_requested': return { label: 'Review requested', verb: 'requested your review on' };
+    default: return { label: 'New activity', verb: 'new activity in' };
+  }
 }
 
 // GitHub reuses one notification thread (stable id) per issue and only bumps
@@ -134,9 +153,7 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
 
   function fireOsNotification(note) {
     if (!supported() || permission() !== 'granted' || !browserEnabled()) return;
-    const verb = isAlertReason(note.reason) && note.reason.toLowerCase() === 'mention'
-      ? 'mentioned you in'
-      : 'assigned you to';
+    const { verb } = reasonPhrasing(note.reason);
     try {
       const n = new Notification(`GitHub: ${note.repo}`, {
         body: `${verb} ${note.title}`,
@@ -161,8 +178,9 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
     for (const note of list) {
       if (!note || note.id == null || seen.has(keyOf(note))) continue;
       seen.add(keyOf(note));
-      if (!isAlertReason(note.reason)) continue;
-      const label = note.reason.toLowerCase() === 'mention' ? 'New mention' : 'New assignment';
+      // Read threads (now included in the stream for history) must never alert.
+      if (!note.unread || !isAlertReason(note.reason)) continue;
+      const { label } = reasonPhrasing(note.reason);
       if (toast) toast('info', label, `${note.repo} — ${note.title}`);
       fireOsNotification(note);
     }
@@ -255,7 +273,7 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
   async function fallbackPoll() {
     let items;
     try {
-      items = await api.listNotifications();
+      items = await api.listNotifications(); // all=false: unread inbox only
     } catch {
       return; // transient/auth failure — keep badge as-is, retry next tick
     }

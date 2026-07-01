@@ -97,17 +97,58 @@ async def test_assign_reason_also_notifies(monkeypatch: pytest.MonkeyPatch) -> N
     assert [n.id for n in fired] == ["9"]
 
 
-async def test_non_mention_assign_reasons_do_not_notify(
+async def test_read_mention_does_not_notify(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A thread that is already read (unread=False) must not OS-notify.
+
+    The poller queries unread-only (all=false), but this unread gate is kept as a
+    defensive guard so a read thread can never raise an alert.
+    """
+    read_mention = _note("7", "mention")
+    read_mention.unread = False
+    _stub_rounds(monkeypatch, [[], [read_mention]])
+    fired: list[Notification] = []
+
+    async def notify(n: Notification) -> None:
+        fired.append(n)
+
+    seen: dict[str, str] = {}
+    await notifier.poll_once(seen, notify, prime=True)
+    await notifier.poll_once(seen, notify, prime=False)
+    assert fired == []
+    assert set(seen) == {"7"}
+
+
+async def test_repeat_mention_arriving_as_comment_notifies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A repeat mention on a subscribed thread arrives as reason ``comment``.
+
+    After the first mention GitHub auto-subscribes you, so subsequent mentions
+    on the same issue commonly report ``reason='comment'``. That MUST still alert
+    — otherwise only the very first mention would ever notify.
+    """
+    _stub_rounds(monkeypatch, [[], [_note("4", "comment"), _note("8", "review_requested")]])
+    fired: list[Notification] = []
+
+    async def notify(n: Notification) -> None:
+        fired.append(n)
+
+    seen: dict[str, str] = {}
+    await notifier.poll_once(seen, notify, prime=True)
+    await notifier.poll_once(seen, notify, prime=False)
+    assert [n.id for n in fired] == ["4", "8"]
+
+
+async def test_quiet_reasons_do_not_notify(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pure repo-watching / automation reasons never raise an OS interrupt."""
     _stub_rounds(
         monkeypatch,
         [
             [],
             [
-                _note("3", "review_requested"),
-                _note("4", "comment"),
-                _note("5", "subscribed"),
+                _note("3", "subscribed"),
+                _note("4", "ci_activity"),
+                _note("5", "push"),
             ],
         ],
     )
@@ -211,6 +252,32 @@ async def test_run_poller_persists_state_between_runs(
 
 async def _async_none() -> None:
     return None
+
+
+def test_poll_delay_honors_advertised_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no override we poll on GitHub's advertised X-Poll-Interval, not faster."""
+    monkeypatch.delenv("GITAUTO_POLL_INTERVAL", raising=False)
+    monkeypatch.setattr(client, "notifications_poll_interval", lambda: 60)
+    assert notifier._poll_delay() == 60.0
+    monkeypatch.setattr(client, "notifications_poll_interval", lambda: 90)
+    assert notifier._poll_delay() == 90.0
+
+
+def test_poll_delay_env_override_forces_faster_clamped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An override forces a faster cadence, clamped to the hard floor."""
+    monkeypatch.setattr(client, "notifications_poll_interval", lambda: 60)
+    monkeypatch.setenv("GITAUTO_POLL_INTERVAL", "20")
+    assert notifier._poll_delay() == 20.0
+    monkeypatch.setenv("GITAUTO_POLL_INTERVAL", "1")  # too aggressive -> floor
+    assert notifier._poll_delay() == float(notifier._MIN_POLL_INTERVAL)
+
+
+def test_poll_delay_invalid_env_falls_back_to_advertised(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(client, "notifications_poll_interval", lambda: 60)
+    monkeypatch.setenv("GITAUTO_POLL_INTERVAL", "not-a-number")
+    assert notifier._poll_delay() == 60.0
 
 
 def test_format_titles() -> None:

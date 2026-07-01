@@ -43,6 +43,7 @@ class IssueSummary(BaseModel):
 class Comment(BaseModel):
     """A single comment on an issue."""
 
+    id: int | None = None
     author: str
     body: str
     created_at: str

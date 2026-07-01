@@ -54,14 +54,25 @@ export function createView(root, { toast }) {
   let stateSelect, markReadBtn, osToggleBtn, testBtn, repoInput;
   let filterTabs = [];
   let lastNotifications = [];
-  let selectedNotificationId = null;
+  let lastIssues = [];
   let openDetail = null; // { repo, number } currently shown in the detail pane
 
-  // All paths into the detail pane go through here so live refreshes know what's
-  // open and can re-fetch it to surface new comments.
+  // The detail pane owns its own liveness — it polls the open issue and appends
+  // new comments in place — so opening one is all the view has to do here.
   function showDetail(target) {
     openDetail = target;
     detail.show(target);
+  }
+
+  // The list only ever shows UNREAD threads (the API is queried with all=false):
+  // reading one removes it, and a re-mention brings it back as unread. Filtering
+  // locally makes the optimistic "opened → gone" update instant.
+  function unreadNotifications() {
+    return lastNotifications.filter((n) => n.unread);
+  }
+
+  function renderNotifications() {
+    if (mode === 'notifications') renderRows(unreadNotifications(), false);
   }
 
   // ---- Row builders --------------------------------------------------------
@@ -106,7 +117,6 @@ export function createView(root, { toast }) {
     if (selectedKey === key) row.setAttribute('aria-current', 'true');
     row.addEventListener('click', () => {
       selectedKey = key;
-      selectedNotificationId = null;
       renderRows(lastRows, true);
       showDetail({ repo: issue.repo, number: issue.number });
     });
@@ -119,15 +129,69 @@ export function createView(root, { toast }) {
       [el('span', { class: 'gh-list__title', text: msg })]);
   }
 
+  function rowKey(item) {
+    return item.number != null ? `${item.repo}#${item.number}` : item.id;
+  }
+
+  // A fingerprint of everything that affects a row's rendered output, so a live
+  // update only rebuilds rows whose content/state actually changed.
+  function rowSignature(item, isIssues) {
+    const sel = selectedKey === rowKey(item) ? '1' : '0';
+    if (isIssues) {
+      return `i|${item.state}|${item.title}|${item.comments}|${item.updated_at}|${sel}`;
+    }
+    return `n|${item.reason}|${item.unread ? 1 : 0}|${item.title}|${item.updated_at}|${sel}`;
+  }
+
+  // Keyed in-place reconciliation. Instead of wiping and rebuilding the whole
+  // list on every push (which flickers and resets scroll), we insert new rows,
+  // rebuild only the rows whose signature changed, drop removed ones, and leave
+  // the rest untouched — a seamless, messaging-app-style refresh.
+  let renderedIsIssues = null;
+  const rowEls = new Map(); // key -> { el, sig }
+
   function renderRows(rows, isIssues) {
     lastRows = rows;
-    listEl.replaceChildren();
+    if (renderedIsIssues !== isIssues) {
+      // Switching row type (notifications <-> issues): start from a clean slate.
+      rowEls.clear();
+      listEl.replaceChildren();
+      renderedIsIssues = isIssues;
+    }
     if (!rows.length) {
-      listEl.appendChild(emptyState(isIssues ? 'No issues match this filter.' : 'No notifications.'));
+      rowEls.clear();
+      const msg = isIssues
+        ? 'No issues match this filter.'
+        : "You're all caught up — no unread notifications.";
+      listEl.replaceChildren(emptyState(msg));
       return;
     }
+    const emptyNode = listEl.querySelector('.gh-list__empty');
+    if (emptyNode) emptyNode.remove();
+
+    const wanted = new Set();
+    let prev = null;
     for (const item of rows) {
-      listEl.appendChild(isIssues ? issueRow(item) : notificationRow(item));
+      const key = rowKey(item);
+      wanted.add(key);
+      const sig = rowSignature(item, isIssues);
+      let entry = rowEls.get(key);
+      if (!entry) {
+        entry = { el: isIssues ? issueRow(item) : notificationRow(item), sig };
+        rowEls.set(key, entry);
+      } else if (entry.sig !== sig) {
+        const node = isIssues ? issueRow(item) : notificationRow(item);
+        entry.el.replaceWith(node);
+        entry.el = node;
+        entry.sig = sig;
+      }
+      // Keep DOM order aligned with `rows`.
+      const target = prev ? prev.nextSibling : listEl.firstChild;
+      if (entry.el !== target) listEl.insertBefore(entry.el, target);
+      prev = entry.el;
+    }
+    for (const [key, entry] of rowEls) {
+      if (!wanted.has(key)) { entry.el.remove(); rowEls.delete(key); }
     }
   }
 
@@ -136,12 +200,14 @@ export function createView(root, { toast }) {
     panelTitle.textContent = 'Notifications';
     listEl.setAttribute('aria-busy', 'true');
     try {
+      // all=false: GitHub returns only UNREAD threads, so read ones drop out on
+      // their own and a re-mention comes back as a fresh unread thread.
       const items = await api.listNotifications();
       lastNotifications = Array.isArray(items) ? items : [];
-      if (mode === 'notifications') renderRows(lastNotifications, false);
+      renderNotifications();
     } catch (err) {
       toast('error', 'Could not load notifications', err.message);
-      if (mode === 'notifications') renderRows([], false);
+      renderNotifications();
     } finally {
       listEl.setAttribute('aria-busy', 'false');
     }
@@ -156,10 +222,11 @@ export function createView(root, { toast }) {
         filter: issueFilter,
         state: issueState,
       });
-      if (mode === 'issues') renderRows(Array.isArray(items) ? items : [], true);
+      lastIssues = Array.isArray(items) ? items : [];
+      if (mode === 'issues') renderRows(lastIssues, true);
     } catch (err) {
       toast('error', 'Could not load issues', err.message);
-      if (mode === 'issues') renderRows([], true);
+      if (mode === 'issues') renderRows(lastIssues, true);
     } finally {
       listEl.setAttribute('aria-busy', 'false');
     }
@@ -194,10 +261,26 @@ export function createView(root, { toast }) {
   }
 
   // ---- Interactions --------------------------------------------------------
+  function unreadCount() {
+    return lastNotifications.filter((n) => n.unread).length;
+  }
+
   function openNotification(note) {
-    selectedNotificationId = note.id;
     selectedKey = note.number != null ? `${note.repo}#${note.number}` : note.id;
-    if (mode === 'notifications') renderRows(lastNotifications, false);
+    // Opening a thread marks it read (optimistically; revert if the server
+    // refuses) — no separate "clear" click needed. In the Unread view it then
+    // drops out of the list; a later re-mention makes it reappear as unread.
+    if (note.unread) {
+      note.unread = false;
+      if (alerts) alerts.setBadge(unreadCount());
+      api.markNotificationRead(note.id).catch(() => {
+        note.unread = true;
+        renderNotifications();
+        if (alerts) alerts.setBadge(unreadCount());
+        toast('error', 'Could not mark read', 'The notification stays unread.');
+      });
+    }
+    renderNotifications();
     if (note.number != null) {
       showDetail({ repo: note.repo, number: note.number });
     } else if (note.url) {
@@ -207,21 +290,23 @@ export function createView(root, { toast }) {
     }
   }
 
-  async function markSelectedRead() {
-    const note = lastNotifications.find((n) => n.id === selectedNotificationId);
-    if (!note) {
-      toast('info', 'Select a notification', 'Pick a notification to mark it read.');
+  async function markAllRead() {
+    if (!lastNotifications.some((n) => n.unread)) {
+      toast('info', 'All caught up', 'No unread notifications.');
       return;
     }
+    setLoading(markReadBtn, true);
     try {
-      const res = await api.markNotificationRead(note.id);
+      const res = await api.markAllNotificationsRead();
       if (res && res.ok === false) throw new Error('Server rejected the request.');
-      note.unread = false;
-      renderRows(lastNotifications, false);
-      if (alerts) alerts.setBadge(lastNotifications.filter((n) => n.unread).length);
-      toast('success', 'Marked read', `${note.repo} #${note.number ?? ''}`.trim());
+      for (const n of lastNotifications) n.unread = false;
+      renderNotifications();
+      if (alerts) alerts.setBadge(0);
+      toast('success', 'All notifications marked read');
     } catch (err) {
-      toast('error', 'Could not mark read', err.message);
+      toast('error', 'Could not mark all read', err.message);
+    } finally {
+      setLoading(markReadBtn, false);
     }
   }
 
@@ -244,6 +329,10 @@ export function createView(root, { toast }) {
       t.setAttribute('aria-selected', String(active));
     }
     mountControls();
+    // Render the new mode's cached rows immediately so the previous section's
+    // list doesn't linger while the fresh fetch is in flight.
+    if (mode === 'notifications') renderNotifications();
+    else renderRows(lastIssues, true);
     reload();
   }
 
@@ -383,11 +472,13 @@ export function createView(root, { toast }) {
     ]);
     syncAllTab();
 
-    // Notification controls (mark read)
+    // Notification controls: just "Mark all read" (opening a thread marks that
+    // one read on its own). The list is the unread inbox — no filter tabs.
     markReadBtn = el('button', {
-      class: 'btn btn--ghost btn--sm', text: 'Mark read', attrs: { type: 'button' },
+      class: 'btn btn--ghost btn--sm', text: 'Mark all read',
+      attrs: { type: 'button', title: 'Mark every notification as read' },
     });
-    markReadBtn.addEventListener('click', markSelectedRead);
+    markReadBtn.addEventListener('click', markAllRead);
     notifControls = el('div', { class: 'cluster' }, [
       el('span', { class: 'toolbar2__spacer' }),
       markReadBtn,
@@ -422,19 +513,14 @@ export function createView(root, { toast }) {
     if (alerts) {
       alerts.setOnChange((items) => {
         lastNotifications = Array.isArray(items) ? items : lastNotifications;
-        // Only touch the DOM when the GitHub view is actually visible.
+        // Only touch the list DOM when the GitHub view is actually visible.
         if (root.offsetParent === null) return;
         if (mode === 'notifications') {
-          renderRows(lastNotifications, false);
+          renderNotifications(); // seamless keyed reconcile of the unread inbox
         } else {
-          loadIssues(); // re-fetch — issues aren't carried on the notifications event
+          loadIssues(); // issues aren't on the event; refresh (also reconciles)
         }
-        // Re-fetch the open thread so new comments appear — but never clobber an
-        // in-progress reply (re-rendering would discard the textarea contents).
-        if (openDetail) {
-          const replyEl = root.querySelector('#gh-reply');
-          if (!replyEl || !replyEl.value.trim()) detail.show(openDetail);
-        }
+        // The detail pane refreshes itself on its own poll, so nothing to do here.
       });
     }
     reload();

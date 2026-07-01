@@ -79,6 +79,11 @@ export function markNotificationRead(threadId) {
   });
 }
 
+/** POST /api/github/notifications/read-all → { ok } — marks every thread read. */
+export function markAllNotificationsRead() {
+  return request('/api/github/notifications/read-all', { method: 'POST' });
+}
+
 /**
  * GET /api/github/issues?repo=&filter=&state= → IssueSummary[]
  * @param {{repo?:string, filter?:'assigned'|'mentioned'|'created'|'all', state?:'open'|'closed'}} opts

@@ -1,9 +1,11 @@
 """Background poller that fires native OS notifications for new mentions/assigns.
 
 An async loop polls :func:`git_automation.core.github.client.list_notifications`
-every ``max(60, X-Poll-Interval)`` seconds, diffs the threads against a persisted
-"already seen" id set, and for each *new* thread whose ``reason`` is ``mention``
-or ``assign`` fires a native Linux notification via ``notify-send``.
+on GitHub's advertised cadence (``X-Poll-Interval``, ~60s; see :func:`_poll_delay`),
+diffs the threads against a persisted "already seen" id set, and for each *new*
+thread whose ``reason`` is notify-worthy fires a native Linux notification via
+``notify-send``. The notifications API is server-cached to roughly that cadence,
+so polling faster returns identical data while risking secondary rate limiting.
 
 The first round after a fresh start only *primes* the seen-set (so launching the
 app does not replay every existing mention as a new alert). ``notify-send`` is
@@ -17,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -27,8 +30,31 @@ from git_automation.core.github.models import Notification
 
 logger = logging.getLogger(__name__)
 
-# Only these notification reasons warrant an OS-level interrupt.
-_NOTIFY_REASONS = {"mention", "team_mention", "assign"}
+# Notification reasons worth an OS-level interrupt: anything personally directed
+# at the user or a thread they're actively participating in. This is deliberately
+# broad because GitHub reuses ONE thread per issue and, after your first mention,
+# auto-subscribes you -- so a *repeat* mention usually arrives with reason
+# ``comment`` (or ``author``), not ``mention``. Keeping those here is what makes
+# the 2nd/3rd/4th mention notify you, not just the first. Pure repo-watching
+# (``subscribed``) and automation (``ci_activity``/``push``) are intentionally
+# excluded so a heavy watcher isn't flooded.
+_NOTIFY_REASONS = {
+    "mention",
+    "team_mention",
+    "assign",
+    "review_requested",
+    "comment",
+    "author",
+    "manual",
+    "invitation",
+}
+
+# Poll cadence. We HONOR GitHub's advertised ``X-Poll-Interval`` (~60s): the
+# notifications API is server-cached to roughly that cadence, so polling faster
+# returns identical data while risking secondary rate limiting -- which would
+# itself stall the feed. ``GITAUTO_POLL_INTERVAL`` forces a faster cadence (never
+# below the hard floor) for anyone who accepts that trade-off.
+_MIN_POLL_INTERVAL = 10  # hard floor for a manual override
 
 # Repo-local state dir (gitignored); keeps the poller self-contained.
 _DEFAULT_STATE_DIR = Path(".gitauto")
@@ -38,6 +64,11 @@ _TITLES = {
     "mention": "GitHub: mentioned you",
     "team_mention": "GitHub: your team was mentioned",
     "assign": "GitHub: assigned to you",
+    "review_requested": "GitHub: review requested",
+    "comment": "GitHub: new comment",
+    "author": "GitHub: new activity on your thread",
+    "manual": "GitHub: new activity",
+    "invitation": "GitHub: invitation",
 }
 
 # An async callback that delivers one notification. Injectable for tests.
@@ -46,6 +77,23 @@ NotifyFn = Callable[[Notification], Awaitable[None]]
 # An async callback that broadcasts an event to live subscribers (default
 # ``hub.publish``). Injectable for tests so no real fan-out is required.
 PublishFn = Callable[[dict], Awaitable[None]]
+
+
+def _poll_delay() -> float:
+    """Return how many seconds to wait before the next poll.
+
+    Honors GitHub's advertised ``X-Poll-Interval`` (~60s, exposed via
+    :func:`client.notifications_poll_interval`). ``GITAUTO_POLL_INTERVAL`` forces
+    a faster cadence for anyone who accepts the trade-off; either way the result
+    is never below :data:`_MIN_POLL_INTERVAL`.
+    """
+    override = os.environ.get("GITAUTO_POLL_INTERVAL")
+    if override:
+        try:
+            return float(max(_MIN_POLL_INTERVAL, int(override)))
+        except ValueError:
+            logger.warning("notifier: invalid GITAUTO_POLL_INTERVAL=%r; ignoring", override)
+    return float(max(_MIN_POLL_INTERVAL, client.notifications_poll_interval()))
 
 
 def _state_path(state_dir: Path | str | None = None) -> Path:
@@ -153,6 +201,9 @@ async def poll_once(
     Returns:
         The (mutated) ``seen`` map, for convenience.
     """
+    # Only unread threads (all=false): a read thread drops out of the response on
+    # its own, and a re-mention returns it as a fresh unread thread with a bumped
+    # updated_at -- which the (id, updated_at) diff below treats as new activity.
     notifications = await client.list_notifications()
     new_notes: list[Notification] = []
     for note in notifications:
@@ -164,7 +215,9 @@ async def poll_once(
             continue
         if not prime:
             new_notes.append(note)
-            if note.reason in _NOTIFY_REASONS:
+            # Only *unread* mention/assign threads warrant an OS-level interrupt;
+            # a thread already read (here or on github.com) must not re-alert.
+            if note.unread and note.reason in _NOTIFY_REASONS:
                 await notify(note)
         seen[note.id] = note.updated_at
 
@@ -229,8 +282,7 @@ async def run_poller(
         rounds += 1
         if max_rounds is not None and rounds >= max_rounds:
             break
-        interval = max(60, client.notifications_poll_interval())
-        await sleep(interval)
+        await sleep(_poll_delay())
 
 
 async def fire_test_notification(publish: PublishFn = hub.publish) -> bool:

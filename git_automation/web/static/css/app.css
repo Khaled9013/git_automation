@@ -2498,6 +2498,15 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; min-he
   word-break: break-word;
 }
 
+/* Comments container + gentle entrance for comments arriving via live refresh. */
+.gh-detail__comments { display: flex; flex-direction: column; }
+@keyframes gh-comment-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.gh-comment--enter { animation: gh-comment-in 220ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .gh-comment--enter { animation: none; } }
+
 /* ---- Reply box ------------------------------------------------------- */
 .gh-reply {
   display: flex;

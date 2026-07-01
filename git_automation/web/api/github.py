@@ -40,6 +40,13 @@ async def github_mark_notification_read(thread_id: str) -> dict:
     return {"ok": True}
 
 
+@router.post("/github/notifications/read-all")
+async def github_mark_all_notifications_read() -> dict:
+    """Mark every notification thread as read."""
+    await client.mark_all_notifications_read()
+    return {"ok": True}
+
+
 @router.get("/github/issues")
 async def github_issues(
     repo: str | None = Query(None),
