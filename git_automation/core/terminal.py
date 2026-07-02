@@ -41,6 +41,12 @@ _DEFAULT_SHELL = "/bin/bash"
 _READ_CHUNK = 65536
 _MIN_DIM = 1
 _MAX_DIM = 9999
+# Safety-net interval for the writable wait: if the fd is silently closed while
+# a write is parked (no writability event ever arrives), re-check this often so
+# the write can notice the dead fd and bail instead of hanging forever. A normal
+# full buffer wakes immediately via add_writer, so this timeout is never hit in
+# practice -- it is not a poll/busy-spin.
+_WRITE_WAIT_TIMEOUT = 5.0
 
 # Internal sentinel pushed onto the output queue when the PTY reaches EOF.
 _EOF = object()
@@ -182,10 +188,57 @@ class PtySession:
                 written = os.write(self._master_fd, buffer)
                 buffer = buffer[written:]
             except BlockingIOError:
-                await asyncio.sleep(0)
+                # The kernel input buffer is full because the shell stopped
+                # draining its stdin (e.g. a large paste while output is
+                # paused). Wait for the fd to become writable rather than
+                # busy-spinning with sleep(0), which would peg a CPU core until
+                # the buffer drains.
+                if not await self._wait_writable():
+                    # The fd was closed while we waited (e.g. terminate() ran
+                    # concurrently) -- drop the input, same as the OSError path.
+                    return
             except OSError:
                 # Master closed underneath us (child gone) -- drop the input.
                 return
+
+    async def _wait_writable(self) -> bool:
+        """Block until the master fd is writable.
+
+        Returns ``True`` once the fd is writable, or ``False`` if the fd went
+        away while waiting (so the caller should drop the write, mirroring the
+        ``OSError`` path). Never raises for a vanished fd.
+        """
+        fd = self._master_fd
+        if fd is None:
+            return False
+        loop = asyncio.get_running_loop()
+        writable: asyncio.Future[None] = loop.create_future()
+
+        def _on_writable() -> None:
+            if not writable.done():
+                writable.set_result(None)
+
+        try:
+            loop.add_writer(fd, _on_writable)
+        except OSError:
+            # fd already closed -- treat as gone.
+            return False
+        try:
+            await asyncio.wait_for(writable, timeout=_WRITE_WAIT_TIMEOUT)
+        except TimeoutError:
+            # No writability event arrived in time. Let the caller retry the
+            # write: if the fd was silently closed, os.write raises OSError and
+            # the write is dropped; otherwise it simply waits again.
+            pass
+        except OSError:
+            return False
+        finally:
+            try:
+                loop.remove_writer(fd)
+            except (OSError, ValueError):
+                pass
+        # If the fd was closed during the wait, bail out like the OSError path.
+        return self._master_fd is not None
 
     def resize(self, cols: int, rows: int) -> None:
         """Resize the terminal via ``TIOCSWINSZ``."""

@@ -7,6 +7,7 @@ is skipped where a PTY is unavailable (e.g. native Windows).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -132,6 +133,96 @@ async def test_terminate_kills_child_and_is_idempotent(tmp_path: Path) -> None:
 
     # Calling terminate again is a no-op.
     await session.terminate()
+
+
+async def test_large_write_roundtrips_through_full_buffer(tmp_path: Path) -> None:
+    # A write larger than the PTY's input buffer must round-trip byte-for-byte.
+    # The child echoes stdin to stdout in *raw* mode (ECHO/ICANON/OPOST off) so
+    # the bytes come back exactly once, untranslated. As the payload outpaces the
+    # child's draining, the PTY input buffer fills and ``os.write`` raises
+    # EAGAIN -- exercising the writable-wait path in ``PtySession.write`` rather
+    # than the old busy-spin. Reading and writing run concurrently so the buffers
+    # never deadlock.
+    marker = b"<<END-OF-PAYLOAD>>"
+    size = 1024 * 1024  # 1 MiB -- far larger than any PTY line-discipline buffer
+    pattern = b"abcdefghijklmnopqrstuvwxyz0123456789"
+    body = (pattern * (size // len(pattern) + 1))[: size - len(marker)]
+    payload = body + marker
+    total = len(payload)
+
+    script = (
+        "import os, tty\n"
+        "tty.setraw(0)\n"  # no echo, no canonical line buffering, no OPOST
+        "os.write(1, b'READY')\n"
+        f"total = {total}\n"
+        "seen = 0\n"
+        "while seen < total:\n"
+        "    chunk = os.read(0, 65536)\n"
+        "    if not chunk:\n"
+        "        break\n"
+        "    os.write(1, chunk)\n"
+        "    seen += len(chunk)\n"
+    )
+
+    session = PtySession(str(tmp_path), command=[sys.executable, "-c", script])
+    await session.start()
+    try:
+        # Wait until the child has switched to raw mode before sending payload,
+        # otherwise early bytes would be echoed by the default cooked tty.
+        await _read_until(session, b"READY")
+
+        collected = bytearray()
+
+        async def _drain() -> None:
+            while len(collected) < total:
+                chunk = await session.read()
+                if chunk is None:
+                    break
+                collected.extend(chunk)
+
+        reader = asyncio.ensure_future(_drain())
+        try:
+            await asyncio.wait_for(session.write(payload), timeout=30.0)
+            await asyncio.wait_for(reader, timeout=30.0)
+        finally:
+            if not reader.done():
+                reader.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await reader
+
+        assert len(collected) == total
+        assert bytes(collected) == payload
+    finally:
+        await session.terminate()
+
+
+async def test_terminate_during_blocked_write_does_not_hang_or_raise(tmp_path: Path) -> None:
+    # A child that never reads its stdin lets a large write fill the PTY buffer
+    # and park in the writable wait. Tearing the session down must unblock that
+    # parked write cleanly: ``write`` drops the input and returns ``None``
+    # without raising and without hanging (mirrors the closed-fd OSError path).
+    session = PtySession(
+        str(tmp_path),
+        command=[sys.executable, "-c", "import time; time.sleep(60)"],
+    )
+    await session.start()
+    write_task = asyncio.ensure_future(session.write(b"x" * (1024 * 1024)))
+    try:
+        # Let the buffer fill so the write is parked in the writable wait.
+        await asyncio.sleep(0.2)
+        assert not write_task.done()
+
+        await session.terminate()
+
+        # The parked write must finish promptly and return None (not raise).
+        await asyncio.wait_for(write_task, timeout=10.0)
+        assert write_task.result() is None
+    finally:
+        if not write_task.done():
+            write_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await write_task
+        await session.terminate()
 
 
 async def test_cannot_start_twice(tmp_path: Path) -> None:
