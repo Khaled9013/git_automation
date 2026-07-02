@@ -55,9 +55,10 @@ async def _stream_changes(path: str, websocket: WebSocket) -> None:
 @router.websocket("/watch")
 async def watch_socket(websocket: WebSocket, path: str = Query(...)) -> None:
     """Stream ``{"type":"change","paths":[...]}`` frames for the repo at ``path``."""
-    if not origin_allowed(websocket.headers.get("origin")):
+    if not origin_allowed(websocket.headers.get("origin"), expected_port=websocket.url.port):
         # Reject the handshake (no accept) so a foreign-origin page can never
         # observe repository activity. Defends against Cross-Site WS Hijacking.
+        # expected_port also rejects a same-host page on a different loopback port.
         await websocket.close(code=WS_POLICY_VIOLATION)
         return
     await websocket.accept()

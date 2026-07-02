@@ -161,6 +161,32 @@ def test_origin_allowed_rejects_foreign_sites() -> None:
     assert origin_allowed("http://notlocalhost") is False
 
 
+def test_origin_allowed_pins_port_when_expected() -> None:
+    """With ``expected_port`` set, only a same-host AND same-port Origin passes.
+
+    Loopback-host alone is not enough: another local dev server (e.g. a page on
+    ``http://localhost:3000``) is a different origin and must not open our socket.
+    """
+    # Same loopback host AND matching port -> allowed.
+    assert origin_allowed("http://127.0.0.1:8000", expected_port=8000) is True
+    # Loopback host but a *different* port -> rejected (foreign local server).
+    assert origin_allowed("http://127.0.0.1:3000", expected_port=8000) is False
+    assert origin_allowed("http://localhost:3000", expected_port=8000) is False
+    # A missing Origin (non-browser client) stays allowed regardless of port.
+    assert origin_allowed(None, expected_port=8000) is True
+    # An Origin with no explicit port normalizes to the scheme default (80/443),
+    # which is not our custom port -> rejected. A real same-origin page served by
+    # this app on :8000 always includes :8000 in its Origin, so this is safe.
+    assert origin_allowed("http://127.0.0.1", expected_port=8000) is False
+
+
+def test_origin_allowed_no_expected_port_preserves_behavior() -> None:
+    """Without ``expected_port`` (the current callers), no port check happens."""
+    assert origin_allowed("http://127.0.0.1:3000") is True
+    assert origin_allowed("http://localhost:9999") is True
+    assert origin_allowed("http://127.0.0.1") is True
+
+
 def test_terminal_ws_rejects_foreign_origin(tmp_path: Path) -> None:
     """A cross-site Origin is rejected at the handshake — no shell is spawned."""
     from starlette.websockets import WebSocketDisconnect as StarletteWSDisconnect

@@ -47,10 +47,11 @@ async def _forward_events(queue: asyncio.Queue[dict], websocket: WebSocket) -> N
 @router.websocket("/github/events")
 async def github_events_socket(websocket: WebSocket) -> None:
     """Forward published GitHub events to the client until it disconnects."""
-    if not origin_allowed(websocket.headers.get("origin")):
+    if not origin_allowed(websocket.headers.get("origin"), expected_port=websocket.url.port):
         # Reject the handshake (no accept) so a foreign-origin page can never
         # observe the user's GitHub activity. Defends against Cross-Site WS
-        # Hijacking exactly as the terminal/watch sockets do.
+        # Hijacking exactly as the terminal/watch sockets do. expected_port also
+        # rejects a same-host page on a different loopback port.
         await websocket.close(code=WS_POLICY_VIOLATION)
         return
     await websocket.accept()

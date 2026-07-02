@@ -51,9 +51,11 @@ async def _pump_output(session: PtySession, websocket: WebSocket) -> None:
 @router.websocket("/terminal")
 async def terminal_socket(websocket: WebSocket, path: str = Query(...)) -> None:
     """Relay a client WebSocket to a shell running on a PTY in ``path``."""
-    if not origin_allowed(websocket.headers.get("origin")):
+    if not origin_allowed(websocket.headers.get("origin"), expected_port=websocket.url.port):
         # Reject the handshake outright (no accept) so a foreign-origin page
         # never gets a shell. Defends against Cross-Site WebSocket Hijacking.
+        # expected_port pins the Origin to this server's own port, so a page on
+        # another loopback port (e.g. a separate dev server) cannot connect.
         await websocket.close(code=WS_POLICY_VIOLATION)
         return
     await websocket.accept()
