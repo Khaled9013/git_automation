@@ -351,3 +351,67 @@ passed, or logged by this module. Covered by `test_list_*_gh_failure`,
 - Frontend UX: the Issues "All" filter (which the backend requires a repo for)
   is now gated behind a new repo input in the filter row — disabled until a repo
   is set — removing the previous dead/error tab (`static/js/github/view.js`).
+
+---
+
+# Security Review — hardening addendum (host guard, WS origin port)
+
+Scope: findings from the 2026-07 design/robustness re-review, on top of F1–F9,
+S1–S7, G1–G2. Same threat model: single-user, localhost-only. Audit date:
+2026-07-02. Verified with `uv run pytest -q` (all passing) and `ruff` clean.
+
+## H1 — DNS rebinding bypasses the CORS-preflight defense — MEDIUM (fixed)
+
+The earlier "accepted risk" note argued that JSON `POST`s are safe from a
+cross-origin page because the `application/json` content type forces a CORS
+preflight the page cannot satisfy. That argument does **not** cover **DNS
+rebinding**: an attacker's page at `http://evil.com:8000` whose DNS record is
+re-pointed at `127.0.0.1` becomes *same-origin* with this server in the victim's
+browser — no CORS, no preflight, and its `Origin` matches itself. The entire
+JSON `/api` surface was reachable this way: run git ops on local repos,
+enumerate directories via `/api/fs/list`, post GitHub comments, and — worst —
+replace the `gh` session via `POST /api/gh/login/token` with an attacker token,
+silently redirecting future pushes/PRs. This is the one vector reachable by a
+*remote* attacker (via the victim's browser), not just a local process.
+
+The signal that survives rebinding is the `Host` header: the browser still sends
+the attacker's hostname (`evil.com:8000`). **Fix:** `HostGuardMiddleware`
+(`web/security.py`), added in `create_app`, rejects any request whose `Host` is
+not loopback — HTTP `400 invalid_host`, WebSocket close `1008`, both *before* the
+route runs. A missing `Host` is allowed (non-browser clients; browsers always
+send one), mirroring the WS `Origin` trust call. The
+`GITAUTO_ALLOW_NONLOOPBACK` opt-out (for an authenticating reverse proxy, where
+`Host` is legitimately arbitrary) disables the guard with a loud warning.
+Regression tests in `tests/test_host_guard.py` cover the parse/allow/deny matrix
+(incl. bracketed IPv6 and look-alike hosts), the HTTP + WS paths, and the
+opt-out.
+
+## H2 — WebSocket Origin accepted any loopback *port* — LOW (fixed)
+
+`origin_allowed` accepted any loopback-host `Origin` regardless of port, so a
+page served by *another* local dev server (e.g. `http://localhost:3000`) was
+treated as same-origin and could open the privileged PTY / watch / events
+sockets. **Fix:** `origin_allowed(origin, *, expected_port=...)` now also pins
+the `Origin` port to the server's own port; the three WS routers pass
+`websocket.url.port`. Backward-compatible (no `expected_port` ⇒ prior
+host-only behavior); a portless `Origin` is treated as a different origin and
+rejected. Tests in `tests/test_slice3_security.py`.
+
+## Unified loopback trust + boot policy (defense-in-depth)
+
+The fail-closed bind policy (`web/__main__.py`) and the in-app Host guard now
+share one loopback definition (`web/security.py`), and **every** boot path
+(`make web`, `web-git`, `web-github`, the console script) goes through the same
+guarded entry point — so a non-loopback `GITAUTO_HOST` is refused uniformly, not
+just on the standalone-tool targets. `make web`'s previous direct-`uvicorn`
+invocation (which bypassed the guard and relied on uvicorn's default bind) is
+gone.
+
+## Forward-looking: Markdown rendering will be the next XSS surface
+
+The design doc's next step renders issue/PR bodies and READMEs as HTML. Issue
+bodies are **remote attacker-controlled** (anyone can comment on a public
+issue). Today's `textContent`/escaped-`innerHTML` discipline protects the app;
+the moment Markdown is rendered to HTML, a **vendored HTML sanitizer** must sit
+between the renderer and the DOM (no-CDN, consistent with the offline rule).
+This is now a written requirement in the design doc's next-step section.

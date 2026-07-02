@@ -297,3 +297,14 @@ implementation plan.
   Markdown (e.g. README files, issue/PR bodies and comments in the GitHub
   cockpit). Add a raw/rendered toggle. Keep it offline/no-CDN (vendor a small
   Markdown renderer, consistent with the existing dark theme).
+
+  > **Security requirement (must-have, not optional).** Issue/PR bodies and
+  > comments are **remote attacker-controlled** — anyone can comment on a public
+  > issue. The app's current safety rests on rendering that text via
+  > `textContent` / escaped `innerHTML`. Rendering Markdown to HTML removes that
+  > protection, so a **vendored HTML sanitizer** (e.g. DOMPurify, bundled
+  > locally — no CDN) MUST sit between the Markdown renderer and the DOM, and the
+  > renderer must not be configured to pass raw HTML through unsanitized. Bake
+  > this into the slice contract before implementation; treat rendered issue
+  > content as untrusted end-to-end. See `docs/SECURITY-REVIEW.md` (forward-
+  > looking XSS note).
