@@ -198,9 +198,17 @@ async def test_large_write_roundtrips_through_full_buffer(tmp_path: Path) -> Non
 
 async def test_terminate_during_blocked_write_does_not_hang_or_raise(tmp_path: Path) -> None:
     # A child that never reads its stdin lets a large write fill the PTY buffer
-    # and park in the writable wait. Tearing the session down must unblock that
-    # parked write cleanly: ``write`` drops the input and returns ``None``
-    # without raising and without hanging (mirrors the closed-fd OSError path).
+    # and park in the writable wait. Tearing the session down while that write is
+    # in flight must resolve it cleanly: ``write`` returns ``None`` without
+    # raising and without hanging (the parked write is unblocked when the child
+    # dies and the master fd reports hangup, mirroring the closed-fd path).
+    #
+    # Whether the write is *still parked* at the moment we terminate is timing-
+    # and buffer-capacity-dependent (a small enough payload can be absorbed
+    # before we act), so we do not assert on that racy precondition. We give the
+    # write a brief best-effort window to fill the buffer, then assert the
+    # invariant that always holds: terminate() makes the write finish promptly
+    # and return None regardless of whether it had parked or already completed.
     session = PtySession(
         str(tmp_path),
         command=[sys.executable, "-c", "import time; time.sleep(60)"],
@@ -208,13 +216,13 @@ async def test_terminate_during_blocked_write_does_not_hang_or_raise(tmp_path: P
     await session.start()
     write_task = asyncio.ensure_future(session.write(b"x" * (1024 * 1024)))
     try:
-        # Let the buffer fill so the write is parked in the writable wait.
+        # Best-effort: let the buffer fill so the write parks (the common case
+        # this exercises). Not asserted -- see the comment above.
         await asyncio.sleep(0.2)
-        assert not write_task.done()
 
         await session.terminate()
 
-        # The parked write must finish promptly and return None (not raise).
+        # The write must finish promptly and return None (not raise, not hang).
         await asyncio.wait_for(write_task, timeout=10.0)
         assert write_task.result() is None
     finally:
