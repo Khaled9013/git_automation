@@ -458,8 +458,43 @@ async def list_notifications(
         return notifications
 
 
+async def _apply_read_to_cache(thread_id: str | None) -> None:
+    """Reflect a just-applied mark-read in the conditional-request cache.
+
+    GitHub's ``/notifications`` list is eventually consistent (~60s) and its
+    ``Last-Modified`` lags a mark-read, so a subsequent conditional poll gets a
+    ``304`` and :func:`list_notifications` re-serves the *cached* list -- which
+    still shows the thread as unread. That is the "I read it, refreshed, and it
+    came back" bug. Patching the cached lists here so the affected thread's
+    ``unread`` becomes ``False`` means a ``304`` can no longer resurface it.
+
+    ``thread_id`` is the thread just read, or ``None`` to mark *every* cached
+    thread read (for :func:`mark_all_notifications_read`). Validators (ETag /
+    ``Last-Modified``) are preserved, so conditional polling stays cheap; a fresh
+    ``200`` still overwrites the cache with GitHub's latest state. Each cache key
+    is patched under its own lock so this cannot race :func:`list_notifications`'
+    read-request-write cycle.
+    """
+    for cache_key in list(_etag_cache):
+        async with _cache_lock(cache_key):
+            entry = _etag_cache.get(cache_key)
+            if entry is None:
+                continue
+            etag, last_modified, notes = entry
+            patched = [
+                note.model_copy(update={"unread": False})
+                if note.unread and (thread_id is None or note.id == thread_id)
+                else note
+                for note in notes
+            ]
+            _etag_cache[cache_key] = (etag, last_modified, patched)
+
+
 async def mark_notification_read(thread_id: str) -> None:
     """Mark a notification thread read via ``PATCH /notifications/threads/{id}``.
+
+    On success the conditional cache is patched (:func:`_apply_read_to_cache`) so
+    a later ``304`` cannot re-serve the just-read thread as unread.
 
     Raises:
         GitAutomationError: ``invalid_argument`` for a bad ``thread_id`` or
@@ -471,13 +506,15 @@ async def mark_notification_read(thread_id: str) -> None:
         f"/notifications/threads/{thread_id}",
         error_code="github_mark_read_failed",
     )
+    await _apply_read_to_cache(thread_id)
 
 
 async def mark_all_notifications_read() -> None:
     """Mark every notification thread read via ``PUT /notifications``.
 
     GitHub marks all threads read as of "now" and answers ``202``/``205`` (no
-    body), so nothing is returned.
+    body), so nothing is returned. On success the conditional cache is patched so
+    a later ``304`` cannot re-serve any thread as unread.
 
     Raises:
         GitAutomationError: ``github_mark_read_failed`` on an API error.
@@ -488,6 +525,7 @@ async def mark_all_notifications_read() -> None:
         error_code="github_mark_read_failed",
         json_body={"read": True},
     )
+    await _apply_read_to_cache(None)
 
 
 async def list_issues(

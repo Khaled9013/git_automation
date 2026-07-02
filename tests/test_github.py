@@ -484,6 +484,79 @@ async def test_mark_all_notifications_read_gh_failure(monkeypatch: pytest.Monkey
     assert exc.value.code == "github_mark_read_failed"
 
 
+# --- mark-read invalidates the conditional cache (read-then-refresh fix) ------
+
+_LAST_MODIFIED = "Wed, 01 Jul 2026 10:00:00 GMT"
+
+
+def _cache_then_conditional(patch_method: str):
+    """Handler: first GET 200 (with Last-Modified), the mark request, then 304.
+
+    Models GitHub's eventual consistency: after the mark request the ``/notifications``
+    list keeps 304-ing (its ``Last-Modified`` has not bumped yet), so any refresh in
+    that window is served from our conditional cache. ``patch_method`` is the method
+    of the mark request to pass through (``PATCH`` for one thread, ``PUT`` for all).
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == patch_method:
+            return httpx.Response(205)
+        if request.headers.get("If-Modified-Since") == _LAST_MODIFIED:
+            return httpx.Response(304)
+        return httpx.Response(
+            200, json=NOTIFICATIONS_JSON, headers={"Last-Modified": _LAST_MODIFIED}
+        )
+
+    return handler
+
+
+async def test_mark_notification_read_patches_cache_so_304_does_not_resurface_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After marking a thread read, a later 304 must not re-serve it as unread.
+
+    Regression for "I read a notification, refresh, and it comes back": our
+    conditional cache was not invalidated on mark-read, so a 304 (GitHub's
+    ~60s eventual-consistency window) re-served the just-read thread as unread.
+    """
+    _install(monkeypatch, _cache_then_conditional("PATCH"))
+
+    first = await client.list_notifications()
+    assert next(n for n in first if n.id == "100").unread is True
+
+    await client.mark_notification_read("100")
+
+    # This poll 304s and is served from cache -- which must now show 100 as read.
+    second = await client.list_notifications()
+    assert next(n for n in second if n.id == "100").unread is False
+    # A different thread's cached state is untouched.
+    assert next(n for n in second if n.id == "101").unread is False
+
+
+async def test_mark_all_notifications_read_marks_whole_cache_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After mark-all, a later 304 must serve every cached thread as read."""
+    _install(monkeypatch, _cache_then_conditional("PUT"))
+
+    first = await client.list_notifications()
+    assert any(n.unread for n in first)
+
+    await client.mark_all_notifications_read()
+
+    second = await client.list_notifications()
+    assert all(n.unread is False for n in second)
+
+
+async def test_mark_notification_read_without_cache_is_a_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Marking read with nothing cached must not error (empty-cache path)."""
+    _install(monkeypatch, _json({}, status=205))
+    await client.mark_notification_read("100")  # no cache populated; must not raise
+    assert client._etag_cache == {}
+
+
 # --- list_issues -------------------------------------------------------------
 
 
