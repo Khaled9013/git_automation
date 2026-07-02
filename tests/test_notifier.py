@@ -65,6 +65,31 @@ async def test_new_mention_in_round_two_fires_once(monkeypatch: pytest.MonkeyPat
     assert set(seen) == {"1", "2"}
 
 
+async def test_published_event_includes_alert_reasons(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The broadcast ``notifications`` event carries the authoritative allow-list.
+
+    The frontend uses this to stay in sync with the backend ``_NOTIFY_REASONS``
+    instead of hardcoding its own copy (which could silently drift).
+    """
+    _stub_rounds(monkeypatch, [[_note("1", "mention")]])
+
+    events: list[dict] = []
+
+    async def fake_publish(event: dict) -> None:
+        events.append(event)
+
+    async def notify(_n: Notification) -> None:
+        return None
+
+    seen: dict[str, str] = {}
+    await notifier.poll_once(seen, notify, prime=False, publish=fake_publish)
+
+    assert len(events) == 1
+    event = events[0]
+    assert event["type"] == "notifications"
+    assert event["alert_reasons"] == sorted(notifier._NOTIFY_REASONS)
+
+
 async def test_re_mention_in_same_thread_renotifies(monkeypatch: pytest.MonkeyPatch) -> None:
     """A re-mention reuses the thread id but bumps updated_at -> must re-notify."""
     first = _note("1", "mention", title="Mention")

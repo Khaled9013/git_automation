@@ -308,6 +308,9 @@ async def poll_once(
             "count": unread,
             "items": [note.model_dump() for note in notifications],
             "new": [note.model_dump() for note in new_notes],
+            # Authoritative allow-list so the frontend needn't hardcode its own
+            # copy (which could silently drift); it prefers this over its fallback.
+            "alert_reasons": sorted(_NOTIFY_REASONS),
         }
     )
     return seen

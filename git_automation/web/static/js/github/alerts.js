@@ -27,16 +27,34 @@ const PREF_KEY = 'gh.alerts.browserEnabled';
 const SEEN_MAX = 1000;
 
 // Reasons that warrant an active alert (toast / OS notification). Deliberately
-// broad and kept in sync with the backend `_NOTIFY_REASONS`: after your first
-// mention GitHub auto-subscribes you, so a REPEAT mention on the same thread
-// usually arrives as `comment`/`author`, not `mention`. Including those is what
-// makes the 2nd/3rd/4th mention alert you, not just the first.
+// broad: after your first mention GitHub auto-subscribes you, so a REPEAT mention
+// on the same thread usually arrives as `comment`/`author`, not `mention`.
+// Including those is what makes the 2nd/3rd/4th mention alert you, not just the
+// first. This is now only a FALLBACK default — the live allow-list is broadcast
+// by the backend on every `notifications` event (its `_NOTIFY_REASONS`, sent as
+// `alert_reasons`) so the two can no longer silently drift; see below.
 const ALERT_REASONS = new Set([
   'mention', 'team_mention', 'assign', 'assigned',
   'review_requested', 'comment', 'author', 'manual', 'invitation',
 ]);
+// The effective set consulted by isAlertReason(). Starts as the fallback and is
+// replaced when the server sends a non-empty `alert_reasons` array (see
+// applyAlertReasons), so we track the authoritative backend list at runtime
+// while still working against an older backend or before the first event lands.
+let effectiveAlertReasons = ALERT_REASONS;
+
+// Adopt the server's authoritative allow-list. The backend sends `'assign'`,
+// but the UI has always defensively matched the `'assigned'` alias too; we keep
+// that guarantee by unioning in `'assigned'` whenever `'assign'` is present, so
+// isAlertReason('assign') and isAlertReason('assigned') both stay true.
+function applyAlertReasons(reasons) {
+  if (!Array.isArray(reasons) || reasons.length === 0) return;
+  const set = new Set(reasons.map((r) => String(r || '').toLowerCase()));
+  if (set.has('assign')) set.add('assigned');
+  effectiveAlertReasons = set;
+}
 function isAlertReason(reason) {
-  return ALERT_REASONS.has(String(reason || '').toLowerCase());
+  return effectiveAlertReasons.has(String(reason || '').toLowerCase());
 }
 
 /** Human phrasing for a reason: toast title + the OS-notification verb. */
@@ -254,6 +272,9 @@ export function createAlerts({ badgeEl, toast, onOpenThread }) {
         ? msg.count
         : items.filter((it) => it && it.unread).length;
       setBadge(count);
+      // Prefer the backend's authoritative allow-list (falls back to the local
+      // default when the field is absent) BEFORE deciding what alerts to fire.
+      applyAlertReasons(msg.alert_reasons);
       // The server already diffs `new` per poll round; we still de-dup locally.
       processNew(msg.new);
       markSeen(items);
