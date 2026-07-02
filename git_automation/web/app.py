@@ -21,6 +21,7 @@ from starlette.responses import Response
 
 from git_automation import __version__
 from git_automation.integration import ToolModule, available_tools
+from git_automation.web import config
 from git_automation.web.api import identity, register_error_handlers
 from git_automation.web.security import HostGuardMiddleware, nonloopback_allowed
 
@@ -122,4 +123,9 @@ def create_app(tools: list[str] | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+# The module-level app honors GITAUTO_TOOL so *every* boot path -- including a
+# raw ``uvicorn git_automation.web.app:app`` and the reload-mode import-string
+# boot in ``__main__`` -- mounts the same tool selection. An unknown tool name
+# raises ValueError here, loudly, rather than silently mounting everything
+# (``__main__.main()`` pre-validates to turn that into a clean exit message).
+app = create_app(tools=config.tools_from_env())

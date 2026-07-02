@@ -8,8 +8,10 @@ help: ## Show this help
 setup: ## Create the venv and install all dependencies (incl. dev + desktop)
 	uv sync --all-extras --group dev
 
-web: ## Run the FastAPI web app (all tools)
-	uv run uvicorn git_automation.web.app:app --reload
+# All boots go through the guarded entry point (python -m git_automation.web):
+# it fails closed on a non-loopback GITAUTO_HOST and honors GITAUTO_TOOL/PORT.
+web: ## Run the FastAPI web app (all tools, auto-reload)
+	GITAUTO_RELOAD=1 uv run python -m git_automation.web
 
 # Standalone single-tool boots: GITAUTO_TOOL selects which tool module mounts.
 web-git: ## Run the web app with only the git tool
