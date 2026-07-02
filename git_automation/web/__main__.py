@@ -13,6 +13,13 @@ Advanced users who front the app with their own authenticating proxy can opt out
 by setting ``GITAUTO_ALLOW_NONLOOPBACK=1``; this logs a loud warning and proceeds.
 The host itself is configurable via ``GITAUTO_HOST`` (default ``127.0.0.1``) and
 the port via ``GITAUTO_PORT`` (default ``8000``).
+
+Tool selection
+--------------
+The app is a thin host that mounts self-contained tool modules. By default every
+tool is mounted; set ``GITAUTO_TOOL`` to a comma-separated list (e.g. ``git``,
+``github``, or ``git,github``) to boot a single tool standalone. Unset/empty
+mounts all tools. See ``make web-git`` / ``make web-github`` for shortcuts.
 """
 
 from __future__ import annotations
@@ -27,6 +34,24 @@ logger = logging.getLogger(__name__)
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 _ALLOW_NONLOOPBACK_ENV = "GITAUTO_ALLOW_NONLOOPBACK"
+
+_TOOL_ENV = "GITAUTO_TOOL"
+
+
+def _selected_tools(raw: str | None) -> list[str] | None:
+    """Parse the ``GITAUTO_TOOL`` env value into a tool-selection list.
+
+    Comma-separated names, whitespace-trimmed, with empty segments dropped
+    (e.g. ``"git, github"`` -> ``["git", "github"]``). An unset, empty, or
+    all-blank value yields ``None``, which tells ``create_app`` to mount every
+    tool (the default, unchanged behavior). This is a pure function so it can be
+    unit-tested without booting a server.
+    """
+    if raw is None:
+        return None
+    names = [segment.strip() for segment in raw.split(",")]
+    names = [name for name in names if name]
+    return names or None
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -85,10 +110,25 @@ def _resolve_host() -> str:
 def main() -> None:
     import uvicorn
 
+    from git_automation.web.app import create_app
+
     logging.basicConfig(level=logging.INFO)
     host = _resolve_host()
     port = int(os.environ.get("GITAUTO_PORT", "8000"))
-    uvicorn.run("git_automation.web.app:app", host=host, port=port, reload=False)
+
+    # Build the app with only the selected tools (all when unset). An unknown
+    # tool name raises ValueError from create_app; surface it as a clean,
+    # actionable message instead of a raw traceback.
+    try:
+        app = create_app(tools=_selected_tools(os.environ.get(_TOOL_ENV)))
+    except ValueError as exc:
+        raise SystemExit(
+            f"Refusing to start: {exc}\n"
+            f"Set {_TOOL_ENV} to a comma-separated list of valid tool names, "
+            f"or leave it unset to mount all tools."
+        ) from exc
+
+    uvicorn.run(app, host=host, port=port, reload=False)
 
 
 if __name__ == "__main__":
