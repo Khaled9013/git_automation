@@ -9,6 +9,8 @@ ignored; and a missing ``notify-send`` degrades to a graceful no-op.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from git_automation.core.github import client, notifier
@@ -387,3 +389,140 @@ async def test_seen_map_bounded_and_persisted_via_run_poller(
     assert 0 < len(reloaded) <= notifier._SEEN_CAP
     # Format is still {"seen": {id: updated_at}} -> _load_seen returns str->str.
     assert all(isinstance(k, str) and isinstance(v, str) for k, v in reloaded.items())
+
+
+# --- per-user (XDG) default location + legacy migration -------------------
+
+
+def test_default_state_dir_honors_xdg_state_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The default base is ``$XDG_STATE_HOME/git-automation`` when set."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))
+    assert notifier._default_state_dir() == tmp_path / "xdg" / "git-automation"
+
+
+def test_default_state_dir_falls_back_to_home_local_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Unset (or empty) XDG_STATE_HOME -> ``~/.local/state/git-automation``."""
+    expected = tmp_path / "home" / ".local" / "state" / "git-automation"
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    assert notifier._default_state_dir() == expected
+
+    # An empty string counts as unset.
+    monkeypatch.setenv("XDG_STATE_HOME", "")
+    assert notifier._default_state_dir() == expected
+
+
+def test_state_path_default_resolves_under_xdg(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """``_state_path(None)`` lands the state file under the XDG default."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    expected = tmp_path / "git-automation" / notifier._STATE_FILENAME
+    assert notifier._state_path() == expected
+    assert notifier._state_path(None) == expected
+
+
+def test_state_path_explicit_dir_still_wins(tmp_path) -> None:
+    """An explicit ``state_dir`` overrides the default location, unchanged."""
+    assert notifier._state_path(tmp_path) == tmp_path / notifier._STATE_FILENAME
+
+
+async def test_run_poller_migrates_legacy_repo_local_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """First run at the new default adopts the old ``./.gitauto`` seen-map.
+
+    Continuity: a re-seen legacy id is NOT re-alerted, and because the round is
+    treated as *not* a fresh install (prime=False), a brand-new mention DOES
+    alert -- proving the migrated state was loaded rather than everything primed.
+    """
+    monkeypatch.chdir(tmp_path)
+    legacy_dir = tmp_path / ".gitauto"
+    legacy_dir.mkdir()
+    legacy_file = legacy_dir / notifier._STATE_FILENAME
+    legacy_file.write_text(json.dumps({"seen": {"1": "2026-06-30T10:00:00Z"}}))
+
+    # Point the XDG default at a fresh, empty location (no new-format state yet).
+    xdg = tmp_path / "xdg"
+    xdg.mkdir()
+    monkeypatch.setenv("XDG_STATE_HOME", str(xdg))
+
+    # "1" reappears unchanged (migrated -> no re-alert); "2" is brand new (alerts).
+    _stub_rounds(monkeypatch, [[_note("1", "mention"), _note("2", "mention")]])
+
+    async def fast_sleep(_seconds: float) -> None:
+        return None
+
+    fired: list[Notification] = []
+
+    async def notify(n: Notification) -> None:
+        fired.append(n)
+
+    await notifier.run_poller(
+        notify=notify, state_dir=None, sleep=fast_sleep, max_rounds=1
+    )
+
+    assert [n.id for n in fired] == ["2"]
+    # New state now lives under the XDG default; legacy file left untouched.
+    assert (xdg / "git-automation" / notifier._STATE_FILENAME).exists()
+    assert legacy_file.exists()
+
+
+async def test_run_poller_default_location_primes_when_truly_fresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A genuine first-ever run (no new file, no legacy) primes -> no alerts."""
+    monkeypatch.chdir(tmp_path)  # no ./.gitauto present
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg"))
+    _stub_rounds(monkeypatch, [[_note("1", "mention")]])
+
+    async def fast_sleep(_seconds: float) -> None:
+        return None
+
+    fired: list[Notification] = []
+
+    async def notify(n: Notification) -> None:
+        fired.append(n)
+
+    await notifier.run_poller(
+        notify=notify, state_dir=None, sleep=fast_sleep, max_rounds=1
+    )
+    assert fired == []  # priming round: existing mention not replayed
+    assert (tmp_path / "xdg" / "git-automation" / notifier._STATE_FILENAME).exists()
+
+
+async def test_run_poller_explicit_state_dir_ignores_legacy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """An explicit ``state_dir`` never triggers legacy migration.
+
+    A legacy file exists, but the explicit (empty) dir means the run primes as a
+    fresh install: nothing alerts -- not even the new id "2" -- which proves the
+    legacy seen-map was NOT adopted.
+    """
+    monkeypatch.chdir(tmp_path)
+    legacy_dir = tmp_path / ".gitauto"
+    legacy_dir.mkdir()
+    (legacy_dir / notifier._STATE_FILENAME).write_text(
+        json.dumps({"seen": {"1": "2026-06-30T10:00:00Z"}})
+    )
+    explicit = tmp_path / "explicit"
+    _stub_rounds(monkeypatch, [[_note("1", "mention"), _note("2", "mention")]])
+
+    async def fast_sleep(_seconds: float) -> None:
+        return None
+
+    fired: list[Notification] = []
+
+    async def notify(n: Notification) -> None:
+        fired.append(n)
+
+    await notifier.run_poller(
+        notify=notify, state_dir=explicit, sleep=fast_sleep, max_rounds=1
+    )
+    assert fired == []

@@ -7,6 +7,12 @@ thread whose ``reason`` is notify-worthy fires a native Linux notification via
 ``notify-send``. The notifications API is server-cached to roughly that cadence,
 so polling faster returns identical data while risking secondary rate limiting.
 
+The seen-set is persisted per-USER (not per-repo) under the XDG state dir
+(``$XDG_STATE_HOME/git-automation`` or ``~/.local/state/git-automation``), so
+dedup survives launching the app from any working directory. A one-time
+migration adopts the old repo-local ``./.gitauto/notifier-state.json`` if the new
+location has no state yet (see :func:`run_poller`), preserving dedup continuity.
+
 The first round after a fresh start only *primes* the seen-set (so launching the
 app does not replay every existing mention as a new alert). ``notify-send`` is
 detected once; when absent the loop still runs (and keeps state current) but
@@ -56,9 +62,25 @@ _NOTIFY_REASONS = {
 # below the hard floor) for anyone who accepts that trade-off.
 _MIN_POLL_INTERVAL = 10  # hard floor for a manual override
 
-# Repo-local state dir (gitignored); keeps the poller self-contained.
-_DEFAULT_STATE_DIR = Path(".gitauto")
+# Legacy repo-local state dir (gitignored, CWD-relative). Historically the seen
+# state lived here, but that made dedup discontinuous when the app was launched
+# from a different directory. It is now only consulted for a one-time migration
+# into the per-user default (see _default_state_dir / run_poller).
+_LEGACY_STATE_DIR = Path(".gitauto")
 _STATE_FILENAME = "notifier-state.json"
+
+
+def _default_state_dir() -> Path:
+    """Return the per-user XDG state dir for the notifier's seen-state.
+
+    Base is ``$XDG_STATE_HOME/git-automation`` when ``XDG_STATE_HOME`` is set and
+    non-empty, otherwise ``~/.local/state/git-automation``. The environment is
+    read at call time (not import time) so tests can monkeypatch
+    ``XDG_STATE_HOME``/``HOME``.
+    """
+    xdg = os.environ.get("XDG_STATE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "state"
+    return base / "git-automation"
 
 # Safety ceiling on the persisted seen-map so it can't grow unbounded over
 # months of polling. After each round the map is rebuilt most-recent-first
@@ -108,8 +130,12 @@ def _poll_delay() -> float:
 
 
 def _state_path(state_dir: Path | str | None = None) -> Path:
-    """Return the JSON state-file path under ``state_dir`` (default ``.gitauto/``)."""
-    base = Path(state_dir) if state_dir is not None else _DEFAULT_STATE_DIR
+    """Return the JSON state-file path under ``state_dir``.
+
+    An explicit ``state_dir`` always wins; ``None`` resolves to the per-user XDG
+    default (:func:`_default_state_dir`).
+    """
+    base = Path(state_dir) if state_dir is not None else _default_state_dir()
     return base / _STATE_FILENAME
 
 
@@ -302,7 +328,8 @@ async def run_poller(
             ``notify-send`` is available, otherwise a logged no-op.
         publish: Live-event broadcast sink passed to each poll round (default
             ``hub.publish``); the app injects ``hub.publish`` explicitly.
-        state_dir: Directory for the JSON seen-state file (default ``.gitauto/``).
+        state_dir: Directory for the JSON seen-state file. ``None`` (the default)
+            uses the per-user XDG location (:func:`_default_state_dir`).
         sleep: Injectable sleep (tests pass a fast/cancelling stub).
         max_rounds: Stop after this many rounds; ``None`` loops forever.
     """
@@ -315,7 +342,18 @@ async def run_poller(
 
     path = _state_path(state_dir)
     seen = _load_seen(path)
+    # Prime only on a genuinely first-ever run: no prior state anywhere. If the
+    # new default location has no state yet, adopt the legacy repo-local file (a
+    # one-time migration) so dedup continuity is preserved and this is NOT treated
+    # as a fresh install. The legacy file is only consulted for the default
+    # location and is left in place; once _save_seen writes the new file below,
+    # path.exists() is true and the legacy file is never read again.
     prime = not path.exists()
+    if prime and state_dir is None:
+        legacy_path = _LEGACY_STATE_DIR / _STATE_FILENAME
+        if legacy_path.exists():
+            seen = _load_seen(legacy_path)
+            prime = False
     rounds = 0
 
     while max_rounds is None or rounds < max_rounds:
