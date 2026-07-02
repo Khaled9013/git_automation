@@ -119,14 +119,14 @@ async def test_stage_ops_reject_traversal_amid_valid_paths(repo: str, fn) -> Non
 
 
 def test_api_fetch_rejects_option_like_remote(repo: str) -> None:
-    api = TestClient(create_app(), raise_server_exceptions=False)
+    api = TestClient(create_app(), base_url="http://127.0.0.1", raise_server_exceptions=False)
     resp = api.post("/api/git/fetch", json={"path": repo, "remote": "--upload-pack=evil"})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "invalid_argument"
 
 
 def test_api_branch_delete_rejects_option_like_name(repo: str) -> None:
-    api = TestClient(create_app(), raise_server_exceptions=False)
+    api = TestClient(create_app(), base_url="http://127.0.0.1", raise_server_exceptions=False)
     resp = api.post("/api/git/branch/delete", json={"path": repo, "name": "--force", "force": True})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "invalid_argument"

@@ -10,6 +10,7 @@ single lifespan via an :class:`~contextlib.AsyncExitStack`.
 from __future__ import annotations
 
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,9 @@ from starlette.responses import Response
 from git_automation import __version__
 from git_automation.integration import ToolModule, available_tools
 from git_automation.web.api import identity, register_error_handlers
+from git_automation.web.security import HostGuardMiddleware, nonloopback_allowed
+
+logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -81,6 +85,18 @@ def create_app(tools: list[str] | None = None) -> FastAPI:
             yield
 
     app = FastAPI(title="git-automation", version=__version__, lifespan=_lifespan)
+
+    # Reject non-loopback Host headers (DNS-rebinding defense; see
+    # web/security.py). Skipped only under the documented reverse-proxy
+    # opt-out, where Host is legitimately arbitrary.
+    if nonloopback_allowed():
+        logger.warning(
+            "SECURITY: %s is set -- the loopback Host guard is disabled; "
+            "only run this behind an authenticating proxy.",
+            "GITAUTO_ALLOW_NONLOOPBACK",
+        )
+    else:
+        app.add_middleware(HostGuardMiddleware)
 
     @app.get("/health")
     def health() -> dict[str, str]:

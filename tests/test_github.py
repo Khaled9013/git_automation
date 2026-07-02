@@ -818,7 +818,7 @@ def _router_client() -> TestClient:
     api = APIRouter(prefix="/api")
     api.include_router(github_api.router)
     app.include_router(api)
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1")
 
 
 def test_router_notifications(monkeypatch: pytest.MonkeyPatch) -> None:

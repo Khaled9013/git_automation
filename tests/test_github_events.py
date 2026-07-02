@@ -241,7 +241,7 @@ def _events_app() -> FastAPI:
 
 def test_events_ws_rejects_foreign_origin() -> None:
     """A cross-site Origin is rejected at the handshake — no subscription opens."""
-    test_client = TestClient(_events_app())
+    test_client = TestClient(_events_app(), base_url="http://127.0.0.1")
 
     with pytest.raises(StarletteWSDisconnect) as exc:
         with test_client.websocket_connect(
@@ -260,7 +260,7 @@ def test_test_notification_endpoint_reports_delivered(
 
     monkeypatch.setattr(notifier, "fire_test_notification", fake_fire)
 
-    resp = TestClient(_events_app()).post("/api/github/test-notification")
+    resp = TestClient(_events_app(), base_url="http://127.0.0.1").post("/api/github/test-notification")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True, "delivered": True}
 
@@ -273,6 +273,6 @@ def test_test_notification_endpoint_ok_when_undelivered(
 
     monkeypatch.setattr(notifier, "fire_test_notification", fake_fire)
 
-    resp = TestClient(_events_app()).post("/api/github/test-notification")
+    resp = TestClient(_events_app(), base_url="http://127.0.0.1").post("/api/github/test-notification")
     assert resp.status_code == 200  # still 200 so the UI can explain
     assert resp.json() == {"ok": True, "delivered": False}

@@ -11,7 +11,7 @@ def test_package_has_version():
 
 
 def test_health_endpoint():
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://127.0.0.1")
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"

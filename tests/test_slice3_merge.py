@@ -24,7 +24,7 @@ def api() -> TestClient:
     app = FastAPI()
     register_error_handlers(app)
     app.include_router(merge_api.router, prefix="/api")
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
 
 
 def _git(cwd: Path, *args: str) -> str:

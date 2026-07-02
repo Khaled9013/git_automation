@@ -103,7 +103,7 @@ def test_ws_rejects_foreign_origin(tmp_path: Path) -> None:
 
     app = FastAPI()
     app.include_router(watch.router)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
 
     with pytest.raises(WebSocketDisconnect) as excinfo:
         with client.websocket_connect(

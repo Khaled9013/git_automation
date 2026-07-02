@@ -14,7 +14,7 @@ LOGGED_IN = "github.com\n  ✓ Logged in to github.com account octocat (keyring)
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(create_app())
+    return TestClient(create_app(), base_url="http://127.0.0.1")
 
 
 def _identity_run(name, email, gh_ok, recorder=None):

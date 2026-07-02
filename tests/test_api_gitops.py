@@ -13,7 +13,7 @@ from git_automation.web.app import create_app
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(create_app())
+    return TestClient(create_app(), base_url="http://127.0.0.1")
 
 
 def _git(cwd: Path, *args: str) -> None:

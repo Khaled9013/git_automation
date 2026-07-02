@@ -43,7 +43,7 @@ def merge_client() -> TestClient:
     app = FastAPI()
     register_error_handlers(app)
     app.include_router(merge_api.router, prefix="/api")
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(app, base_url="http://127.0.0.1", raise_server_exceptions=False)
 
 
 # --- resolve_conflict: arbitrary-write traversal --------------------------
@@ -169,7 +169,7 @@ def test_terminal_ws_rejects_foreign_origin(tmp_path: Path) -> None:
 
     app = FastAPI()
     app.include_router(terminal_api.router, prefix="/api")
-    test_client = TestClient(app)
+    test_client = TestClient(app, base_url="http://127.0.0.1")
 
     with pytest.raises(StarletteWSDisconnect) as exc:
         with test_client.websocket_connect(

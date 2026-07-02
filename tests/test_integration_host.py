@@ -84,12 +84,12 @@ def test_github_only_serves_github_not_git() -> None:
 
 def test_git_only_returns_404_for_github_route() -> None:
     # No `with`: we assert routing, not lifespan, so don't start the poller.
-    client = TestClient(create_app(tools=["git"]))
+    client = TestClient(create_app(tools=["git"]), base_url="http://127.0.0.1")
     assert client.get(GITHUB_ROUTE).status_code == 404
 
 
 def test_github_only_returns_404_for_git_route() -> None:
-    client = TestClient(create_app(tools=["github"]))
+    client = TestClient(create_app(tools=["github"]), base_url="http://127.0.0.1")
     assert client.get(GIT_ROUTE).status_code == 404
 
 
@@ -135,19 +135,19 @@ def poller_spy(monkeypatch: pytest.MonkeyPatch) -> dict[str, bool]:
 
 
 def test_all_tools_starts_notifier(poller_spy: dict[str, bool]) -> None:
-    with TestClient(create_app()):
+    with TestClient(create_app(), base_url="http://127.0.0.1"):
         pass
     assert poller_spy["poller_started"] is True
 
 
 def test_github_only_starts_notifier(poller_spy: dict[str, bool]) -> None:
-    with TestClient(create_app(tools=["github"])):
+    with TestClient(create_app(tools=["github"]), base_url="http://127.0.0.1"):
         pass
     assert poller_spy["poller_started"] is True
 
 
 def test_git_only_does_not_start_notifier(poller_spy: dict[str, bool]) -> None:
-    with TestClient(create_app(tools=["git"])):
+    with TestClient(create_app(tools=["git"]), base_url="http://127.0.0.1"):
         pass
     assert poller_spy["auth_checked"] is False
     assert poller_spy["poller_started"] is False
@@ -161,5 +161,5 @@ def test_notifier_startup_never_crashes_app(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(tools_mod.gh_cli, "auth_status", boom)
     # If the guard is missing, entering the context (startup) would raise.
-    with TestClient(create_app(tools=["github"])) as client:
+    with TestClient(create_app(tools=["github"]), base_url="http://127.0.0.1") as client:
         assert client.get("/health").status_code == 200
