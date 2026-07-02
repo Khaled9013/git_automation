@@ -64,11 +64,46 @@ export function createView(root, { toast }) {
     detail.show(target);
   }
 
+  // Recently-read guard: hides a thread the user just opened until GitHub's
+  // ~60s eventually-consistent /notifications list catches up. Without it, a
+  // refresh (or the poller's push) inside that window re-fetches the just-read
+  // thread as still-unread and it "comes back". The backend also patches its
+  // conditional cache on mark-read (covers the 304 path); this covers the case
+  // where GitHub returns a fresh 200 still listing the thread as unread.
+  //
+  // Keyed by thread id -> { updatedAt, expiresAt }. A genuine re-mention (a
+  // newer updated_at than when we recorded it) is NEVER suppressed, and the
+  // entry self-expires after the TTL so nothing is hidden forever.
+  const RECENTLY_READ_TTL_MS = 90000; // > GitHub's ~60s consistency window
+  const recentlyRead = new Map();
+
+  function markRecentlyRead(note) {
+    if (note && note.id != null) {
+      recentlyRead.set(note.id, {
+        updatedAt: note.updated_at || '',
+        expiresAt: Date.now() + RECENTLY_READ_TTL_MS,
+      });
+    }
+  }
+
+  function isRecentlyRead(note) {
+    const rec = recentlyRead.get(note.id);
+    if (!rec) return false;
+    // New activity since we read it, or the guard expired => let it through
+    // (and forget it, so a real re-mention is not double-guarded later).
+    if (Date.now() >= rec.expiresAt || (note.updated_at || '') > rec.updatedAt) {
+      recentlyRead.delete(note.id);
+      return false;
+    }
+    return true;
+  }
+
   // The list only ever shows UNREAD threads (the API is queried with all=false):
   // reading one removes it, and a re-mention brings it back as unread. Filtering
-  // locally makes the optimistic "opened → gone" update instant.
+  // locally makes the optimistic "opened → gone" update instant, and the
+  // recently-read guard keeps a just-read thread hidden across a refresh.
   function unreadNotifications() {
-    return lastNotifications.filter((n) => n.unread);
+    return lastNotifications.filter((n) => n.unread && !isRecentlyRead(n));
   }
 
   function renderNotifications() {
@@ -261,8 +296,10 @@ export function createView(root, { toast }) {
   }
 
   // ---- Interactions --------------------------------------------------------
+  // The badge counts the same guarded set the list shows, so a just-read thread
+  // is not double-counted while GitHub's list catches up.
   function unreadCount() {
-    return lastNotifications.filter((n) => n.unread).length;
+    return unreadNotifications().length;
   }
 
   function openNotification(note) {
@@ -271,9 +308,11 @@ export function createView(root, { toast }) {
     // refuses) — no separate "clear" click needed. In the Unread view it then
     // drops out of the list; a later re-mention makes it reappear as unread.
     if (note.unread) {
+      markRecentlyRead(note); // keep it hidden across refreshes until GitHub catches up
       note.unread = false;
       if (alerts) alerts.setBadge(unreadCount());
       api.markNotificationRead(note.id).catch(() => {
+        recentlyRead.delete(note.id); // server refused: let it show again
         note.unread = true;
         renderNotifications();
         if (alerts) alerts.setBadge(unreadCount());
@@ -299,7 +338,10 @@ export function createView(root, { toast }) {
     try {
       const res = await api.markAllNotificationsRead();
       if (res && res.ok === false) throw new Error('Server rejected the request.');
-      for (const n of lastNotifications) n.unread = false;
+      for (const n of lastNotifications) {
+        if (n.unread) markRecentlyRead(n); // hide across refreshes until GitHub catches up
+        n.unread = false;
+      }
       renderNotifications();
       if (alerts) alerts.setBadge(0);
       toast('success', 'All notifications marked read');
@@ -513,6 +555,10 @@ export function createView(root, { toast }) {
     if (alerts) {
       alerts.setOnChange((items) => {
         lastNotifications = Array.isArray(items) ? items : lastNotifications;
+        // Re-assert the guarded unread count (alerts set the raw server count
+        // just before this) so the nav badge matches the recently-read-filtered
+        // list even while the GitHub view is off-screen.
+        alerts.setBadge(unreadCount());
         // Only touch the list DOM when the GitHub view is actually visible.
         if (root.offsetParent === null) return;
         if (mode === 'notifications') {
