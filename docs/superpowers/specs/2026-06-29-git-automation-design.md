@@ -58,9 +58,15 @@ All of this runs automatically, and a live dashboard shows the run.
   tools *register* into it, and it composes them (e.g. lets the agentic workflow
   act through the git cockpit) plus any tool added later. The **skill tree lives
   inside the agentic workflow** and routes tasks to its sub-agents — it is not
-  the cross-tool glue. Architecture target: a thin host that mounts
-  self-contained tool modules (each with its own entry point), so new tools can
-  be added without touching existing ones.
+  the cross-tool glue.
+  **This now exists** (not just aspirational): `git_automation/integration/`
+  exposes a `ToolModule` registry via `available_tools()`, and the web host is a
+  thin mounter — `web.app.create_app(tools=...)` mounts all registered tools by
+  default, or only the named subset (plus shared identity) when given a list.
+  Each tool is therefore bootable standalone: `GITAUTO_TOOL=git|github`
+  selects which tool(s) mount, with `make web-git` / `make web-github`
+  shortcuts (and `make web` for all). New tools register into the same registry
+  without touching existing ones.
 - **Ship Phase 1 standalone.** The GitHub layer must be genuinely useful with
   zero agentic features present.
 - **Lean on existing auth.** Reuse my existing `gh auth` / local git config — no
@@ -99,7 +105,8 @@ git_automation/
 │   │              #   notifications, create repo
 │   ├── sync/      # polling engine: diff against last-seen state, emit events
 │   └── models/    # typed data models (Repo, Issue, PR, Task, Notification...)
-├── web/           # FastAPI backend + browser UI (also hosts agentic dashboard)
+├── integration/   # tool registry (ToolModule) + composer; the thin host glue
+├── web/           # FastAPI host: create_app(tools=...) mounts registered tools
 ├── desktop/       # pywebview shell + system tray + OS notifications + poller
 ├── skilltree/     # capability graph: model, storage, API, visualization data
 ├── agents/        # Claude Agent SDK orchestration (manager + sub-agents)
@@ -117,7 +124,11 @@ git_automation/
 - `core/sync` — periodically queries `core/gh`, diffs against stored last-seen
   state, and emits typed events (e.g. `IssueAssigned`, `Mentioned`,
   `ReviewRequested`). Depends on `core/gh` + a small local state store.
-- `web` — exposes `core` over HTTP/WebSocket and serves the UI. Depends on `core`.
+- `web` — the FastAPI **host**. `create_app(tools=...)` asks `integration` for
+  the registered `ToolModule`s and mounts them (all by default, or a named
+  subset + shared identity; an unknown name raises `ValueError`). Standalone
+  boots are driven by `GITAUTO_TOOL` (`python -m git_automation.web`) and the
+  `make web-git` / `make web-github` targets. Depends on `core` + `integration`.
 - `desktop` — reuses the web frontend, adds tray + OS notifications + a
   background poller. Depends on `web` (embedded) + `core/sync`.
 - `agents` — the agentic-workflow tool: manager + sub-agents, **and the skill
@@ -127,6 +138,9 @@ git_automation/
 - `integration` — the combiner: a thin registry/router API where independent
   tools register and are composed (agentic workflow ⇄ git cockpit ⇄ future
   tools). Depends only on each tool's public interface, never their internals.
+  **Implemented:** `available_tools() -> dict[str, ToolModule]` returns the
+  registered tools (currently `"git"` and `"github"`); the `web` host consumes
+  this registry via `create_app(tools=...)`.
 
 ---
 
@@ -265,6 +279,13 @@ implementation plan.
   in-UI or file-defined.
 - Phase 3: how sub-agents share/isolate working trees (e.g. git worktrees), and
   the review/merge gate before anything is pushed.
+
+> **Status note (resolved).** The integration layer is no longer aspirational:
+> `git_automation/integration/` provides the `ToolModule` registry
+> (`available_tools()`), and `web.app.create_app(tools=...)` is the host that
+> mounts registered tools — all by default, or a named subset standalone via
+> `GITAUTO_TOOL` / `make web-git` / `make web-github`. Remaining glue (composing
+> the agentic workflow *through* the git cockpit at runtime) lands with Phase 3.
 
 ---
 

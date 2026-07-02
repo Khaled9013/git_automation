@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help setup web desktop test lint fmt check clean
+.PHONY: help setup web web-git web-github desktop test lint fmt check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -8,8 +8,15 @@ help: ## Show this help
 setup: ## Create the venv and install all dependencies (incl. dev + desktop)
 	uv sync --all-extras --group dev
 
-web: ## Run the FastAPI web app
+web: ## Run the FastAPI web app (all tools)
 	uv run uvicorn git_automation.web.app:app --reload
+
+# Standalone single-tool boots: GITAUTO_TOOL selects which tool module mounts.
+web-git: ## Run the web app with only the git tool
+	GITAUTO_TOOL=git uv run python -m git_automation.web
+
+web-github: ## Run the web app with only the github tool
+	GITAUTO_TOOL=github uv run python -m git_automation.web
 
 desktop: ## Run the desktop (pywebview) shell
 	uv run python -m git_automation.desktop
