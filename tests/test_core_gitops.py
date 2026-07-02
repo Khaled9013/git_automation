@@ -196,6 +196,35 @@ async def test_delete_files_mixed(tmp_path: Path) -> None:
     assert not (repo / "scratch.txt").exists()
 
 
+async def test_delete_files_batched_two_tracked_two_untracked(tmp_path: Path) -> None:
+    # Two tracked + two untracked in one call: the single batched ls-files
+    # classification must remove the tracked pair via git (staged as "D") and
+    # unlink the untracked pair from disk.
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "a.txt").write_text("a")
+    (repo / "b.txt").write_text("b")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "add a and b")
+    (repo / "scratch1.txt").write_text("temp1")
+    (repo / "scratch2.txt").write_text("temp2")
+
+    result = await client.delete_files(
+        str(repo), ["a.txt", "scratch1.txt", "b.txt", "scratch2.txt"]
+    )
+
+    assert result.ok is True
+    for name in ("a.txt", "b.txt", "scratch1.txt", "scratch2.txt"):
+        assert not (repo / name).exists()
+    # The two tracked files are removed via git (staged deletions); the two
+    # untracked files are simply unlinked (no staged entry, no leftover).
+    changes = await client.get_changes(str(repo))
+    assert sorted((c.path, c.status) for c in changes.staged) == [
+        ("a.txt", "D"),
+        ("b.txt", "D"),
+    ]
+    assert changes.untracked == []
+
+
 async def test_delete_files_rejects_traversal(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path / "repo")
     _commit(repo)

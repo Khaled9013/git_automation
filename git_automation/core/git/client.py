@@ -6,6 +6,7 @@ that operate on a repository validate the path first.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from git_automation.core import process
@@ -427,12 +428,18 @@ async def delete_files(path: str, files: list[str]) -> CommandResult:
             worktree or enters ``.git``.
     """
     cwd = validate_repo_path(path)
+    # Confine every path to the worktree up front (rejects traversal/absolute).
     resolved = {file: _resolve_worktree_file(cwd, file) for file in files}
+    # Classify tracked vs untracked in a SINGLE git call. ``ls-files -z`` lists
+    # only the tracked paths among the requested ones, NUL-separated and in the
+    # exact repo-relative form git records; raw stdout is needed because
+    # ``run_git`` strips output. A requested path is tracked iff it is a member.
+    listing = await process.run_process(["git", "ls-files", "-z", "--", *files], cwd=cwd)
+    tracked_set = {p for p in listing.stdout.split("\0") if p}
     tracked: list[str] = []
     untracked: list[str] = []
     for file in files:
-        check = await run_git(["ls-files", "--error-unmatch", "--", file], cwd=cwd)
-        (tracked if check.ok else untracked).append(file)
+        (tracked if file in tracked_set else untracked).append(file)
     outputs: list[str] = []
     ok = True
     if tracked:
@@ -756,13 +763,20 @@ async def get_refs(path: str) -> RefsBundle:
         path: Path to a local repository.
     """
     cwd = validate_repo_path(path)
-    branches = await list_branches(cwd)
+    # These four sub-queries are independent read-only git reads; run them
+    # concurrently so the sidebar loads faster on large repositories.
+    branches, tags, worktrees, stashes = await asyncio.gather(
+        list_branches(cwd),
+        _list_tags(cwd),
+        _list_worktrees(cwd),
+        _list_stashes(cwd),
+    )
     return RefsBundle(
         local=branches.local,
         remote=branches.remote,
-        tags=await _list_tags(cwd),
-        worktrees=await _list_worktrees(cwd),
-        stashes=await _list_stashes(cwd),
+        tags=tags,
+        worktrees=worktrees,
+        stashes=stashes,
     )
 
 
