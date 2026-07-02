@@ -39,40 +39,10 @@ from git_automation.core.models import (
     Worktree,
 )
 from git_automation.core.process import validate_repo_path
+from git_automation.core.validation import reject_option
 
 # Unit-separator delimiter for plumbing output; cannot appear in ref names.
 _SEP = "\x1f"
-
-
-def _reject_option(value: str, label: str) -> str:
-    """Reject a value git could misread as an option (one starting with ``-``).
-
-    Remote names, branch names, and other git refs can never legitimately begin
-    with ``-`` (see ``git check-ref-format``). Rejecting such values closes an
-    option-injection vector: a crafted ``remote`` like ``--upload-pack=<cmd>``
-    (or ``--receive-pack`` on push) would otherwise be parsed as a flag by
-    ``git fetch``/``pull``/``push`` and lead to arbitrary command execution.
-    ``--`` is not a usable separator for every affected command (e.g. ``git
-    checkout -- main`` means a *pathspec*, not a branch), so this guard is the
-    uniform defense.
-
-    Args:
-        value: The caller-supplied remote/branch/ref value.
-        label: Human-readable name of the field, used in the error message.
-
-    Returns:
-        ``value`` unchanged when it is safe.
-
-    Raises:
-        GitAutomationError: ``invalid_argument`` when ``value`` starts with ``-``.
-    """
-    if value.startswith("-"):
-        raise GitAutomationError(
-            "invalid_argument",
-            f"Invalid {label}: must not start with '-'.",
-            400,
-        )
-    return value
 
 
 def _resolve_worktree_file(cwd: str, file: str) -> Path:
@@ -271,17 +241,17 @@ async def get_status(path: str) -> RepoStatus:
 async def fetch(path: str, remote: str) -> CommandResult:
     """Fetch ``remote`` for the repository at ``path``."""
     cwd = validate_repo_path(path)
-    _reject_option(remote, "remote")
+    reject_option(remote, "remote")
     return await run_git(["fetch", remote], cwd=cwd)
 
 
 async def pull(path: str, remote: str, branch: str | None = None) -> CommandResult:
     """Pull ``remote`` (optionally a specific ``branch``) into ``path``."""
     cwd = validate_repo_path(path)
-    _reject_option(remote, "remote")
+    reject_option(remote, "remote")
     args = ["pull", remote]
     if branch:
-        _reject_option(branch, "branch")
+        reject_option(branch, "branch")
         args.append(branch)
     return await run_git(args, cwd=cwd)
 
@@ -301,13 +271,13 @@ async def push(
         set_upstream: When True, pass ``--set-upstream`` (for a first push).
     """
     cwd = validate_repo_path(path)
-    _reject_option(remote, "remote")
+    reject_option(remote, "remote")
     args = ["push"]
     if set_upstream:
         args.append("--set-upstream")
     args.append(remote)
     if branch:
-        _reject_option(branch, "branch")
+        reject_option(branch, "branch")
         args.append(branch)
     return await run_git(args, cwd=cwd)
 
@@ -575,7 +545,7 @@ async def list_branches(path: str) -> BranchList:
 async def create_branch(path: str, name: str, checkout: bool = False) -> CommandResult:
     """Create branch ``name``; when ``checkout`` is True, switch to it too."""
     cwd = validate_repo_path(path)
-    _reject_option(name, "branch name")
+    reject_option(name, "branch name")
     args = ["checkout", "-b", name] if checkout else ["branch", name]
     return await run_git(args, cwd=cwd)
 
@@ -583,7 +553,7 @@ async def create_branch(path: str, name: str, checkout: bool = False) -> Command
 async def checkout_branch(path: str, name: str) -> CommandResult:
     """Switch the repository at ``path`` to branch ``name``."""
     cwd = validate_repo_path(path)
-    _reject_option(name, "branch name")
+    reject_option(name, "branch name")
     return await run_git(["checkout", name], cwd=cwd)
 
 
@@ -596,7 +566,7 @@ async def delete_branch(path: str, name: str, force: bool = False) -> CommandRes
         force: When True, force-delete unmerged branches (``-D``).
     """
     cwd = validate_repo_path(path)
-    _reject_option(name, "branch name")
+    reject_option(name, "branch name")
     flag = "-D" if force else "-d"
     return await run_git(["branch", flag, "--", name], cwd=cwd)
 
@@ -620,7 +590,7 @@ async def merge_branch(path: str, name: str) -> MergeResult:
         The UI confirms before calling this.
     """
     cwd = validate_repo_path(path)
-    _reject_option(name, "branch name")
+    reject_option(name, "branch name")
     result = await run_git(["merge", name], cwd=cwd)
     conflicts = await _conflicting_paths(cwd)
     return MergeResult(
@@ -816,7 +786,7 @@ async def get_commit_detail(path: str, sha: str) -> CommitDetail:
             ``unknown_commit`` (404) if the commit cannot be resolved.
     """
     cwd = validate_repo_path(path)
-    _reject_option(sha, "commit")
+    reject_option(sha, "commit")
     meta_fmt = _SEP.join(["%H", "%h", "%P", "%an", "%ae", "%aI", "%D", "%s"])
     meta = await run_git(["show", "-s", f"--format={meta_fmt}", sha], cwd=cwd)
     if not meta.ok or _SEP not in meta.output:
@@ -869,7 +839,7 @@ async def checkout_ref(path: str, ref: str) -> CommandResult:
         ref: A branch name or commit-ish; a non-branch checks out detached HEAD.
     """
     cwd = validate_repo_path(path)
-    _reject_option(ref, "ref")
+    reject_option(ref, "ref")
     return await run_git(["checkout", ref], cwd=cwd)
 
 
@@ -892,14 +862,14 @@ async def reset(path: str, sha: str, mode: str) -> CommandResult:
             "Invalid reset mode: must be one of soft, mixed, hard.",
             400,
         )
-    _reject_option(sha, "commit")
+    reject_option(sha, "commit")
     return await run_git(["reset", f"--{mode}", sha], cwd=cwd)
 
 
 async def cherry_pick(path: str, sha: str) -> CommandResult:
     """Apply commit ``sha`` onto the current branch (``git cherry-pick``)."""
     cwd = validate_repo_path(path)
-    _reject_option(sha, "commit")
+    reject_option(sha, "commit")
     return await run_git(["cherry-pick", sha], cwd=cwd)
 
 
@@ -1299,7 +1269,7 @@ async def get_commit_diff(path: str, sha: str, file: str) -> DiffResult:
             ``-`` or ``file`` escapes the worktree / enters ``.git``.
     """
     cwd = validate_repo_path(path)
-    _reject_option(sha, "commit")
+    reject_option(sha, "commit")
     _resolve_worktree_file(cwd, file)
     result = await run_git(["show", sha, "--first-parent", "--", file], cwd=cwd)
     diff = result.output
@@ -1322,8 +1292,8 @@ async def rename_branch(path: str, name: str, new_name: str) -> CommandResult:
             with ``-``.
     """
     cwd = validate_repo_path(path)
-    _reject_option(name, "branch name")
-    _reject_option(new_name, "branch name")
+    reject_option(name, "branch name")
+    reject_option(new_name, "branch name")
     return await run_git(["branch", "-m", name, new_name], cwd=cwd)
 
 
@@ -1343,7 +1313,7 @@ async def track_branch(path: str, remote_ref: str) -> CommandResult:
             with ``-``.
     """
     cwd = validate_repo_path(path)
-    _reject_option(remote_ref, "remote ref")
+    reject_option(remote_ref, "remote ref")
     leaf = remote_ref.split("/", 1)[1] if "/" in remote_ref else remote_ref
     return await run_git(["switch", "-c", leaf, "--track", remote_ref], cwd=cwd)
 

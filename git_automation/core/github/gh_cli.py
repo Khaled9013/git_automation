@@ -16,6 +16,7 @@ from git_automation.core import process
 from git_automation.core.errors import GitAutomationError
 from git_automation.core.github.models import PullRequest
 from git_automation.core.process import validate_repo_path
+from git_automation.core.validation import reject_option
 
 # Matches both modern ("... account NAME") and legacy ("... as NAME") phrasing
 # of `gh auth status` output.
@@ -67,22 +68,6 @@ async def login_with_token(token: str) -> None:
         )
 
 
-def _reject_option(value: str, label: str) -> str:
-    """Reject a value ``gh`` could misread as an option (one starting with ``-``).
-
-    Branch refs can never legitimately begin with ``-`` (see
-    ``git check-ref-format``); rejecting such values closes an option-injection
-    vector against ``gh pr create`` flags. Mirrors the git client's guard.
-    """
-    if value.startswith("-"):
-        raise GitAutomationError(
-            "invalid_argument",
-            f"Invalid {label}: must not start with '-'.",
-            400,
-        )
-    return value
-
-
 async def pr_create(
     path: str,
     title: str,
@@ -115,10 +100,10 @@ async def pr_create(
     if body is not None:
         args += ["--body", body]
     if base is not None:
-        _reject_option(base, "base branch")
+        reject_option(base, "base branch")
         args += ["--base", base]
     if head is not None:
-        _reject_option(head, "head branch")
+        reject_option(head, "head branch")
         args += ["--head", head]
     result = await process.run_process(args, cwd=cwd)
     if not result.ok:

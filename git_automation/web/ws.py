@@ -26,9 +26,7 @@ from urllib.parse import urlparse
 
 from fastapi import WebSocket
 
-# Loopback hosts that a *same-origin* browser tab serving this app would present
-# in its ``Origin`` header. Anything else is a foreign site.
-_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+from git_automation.web.security import LOOPBACK_HOSTS
 
 # Policy-violation close code (RFC 6455) used to reject foreign-origin sockets.
 WS_POLICY_VIOLATION = 1008
@@ -80,7 +78,7 @@ def origin_allowed(origin: str | None, *, expected_port: int | None = None) -> b
         port = parsed.port
     except ValueError:
         return False
-    if host not in _LOOPBACK_HOSTS:
+    if host not in LOOPBACK_HOSTS:
         return False
     if expected_port is not None and port != expected_port:
         return False
