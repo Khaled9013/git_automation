@@ -415,3 +415,37 @@ issue). Today's `textContent`/escaped-`innerHTML` discipline protects the app;
 the moment Markdown is rendered to HTML, a **vendored HTML sanitizer** must sit
 between the renderer and the DOM (no-CDN, consistent with the offline rule).
 This is now a written requirement in the design doc's next-step section.
+
+## Addendum (2026-07-13): tailnet (Tailscale) trust extension
+
+The loopback-only trust model gained one deliberate extension: the machine's
+own Tailscale tailnet. Rationale: a tailnet is a private WireGuard mesh whose
+peers are devices the operator explicitly enrolled, so "reachable over
+Tailscale" means "the operator's own authenticated devices" — unlike a LAN,
+where any nearby machine can connect.
+
+What changed (`web/tailscale.py` is the single source of truth):
+
+- **Bind policy** (`web/__main__.py`): with `GITAUTO_HOST` unset, the app
+  binds loopback **plus** the machine's Tailscale IPs when `tailscale status`
+  reports a running backend (multi-bind = one pre-bound socket per host handed
+  to a single uvicorn server, reload mode included). Explicit Tailscale-range
+  IPs are allowed without the `GITAUTO_ALLOW_NONLOOPBACK` opt-out; everything
+  else still fails closed.
+- **Host guard / WS Origin guard** (`web/security.py::is_trusted_host`,
+  `web/ws.py`): besides loopback, they accept literal IPs inside Tailscale's
+  ranges (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) and this machine's *own*
+  MagicDNS names as reported by the CLI. Other machines' `.ts.net` names and
+  arbitrary hostnames stay rejected, so the DNS-rebinding and CSWSH defenses
+  hold: an attacker's page can never present a literal Tailscale IP or a name
+  that only this machine's tailnet resolver hands out.
+- **Fail-safe detection**: any detection failure (no CLI, daemon stopped,
+  unexpected JSON) degrades to `None` and the app behaves exactly as before
+  (loopback-only). Parsed IPs are re-validated against the Tailscale ranges so
+  CLI output can never smuggle another address into the trusted set.
+
+Residual risk accepted: every device on the operator's tailnet can reach the
+unauthenticated terminal/watch WebSocket surface. That is the feature (the
+tailnet is the operator's own devices); operators who share their tailnet
+should run with `GITAUTO_HOST=127.0.0.1`. Covered by
+`tests/test_tailscale_access.py`.

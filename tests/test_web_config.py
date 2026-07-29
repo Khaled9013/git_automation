@@ -98,6 +98,10 @@ def test_main_runs_import_string_with_env_settings(
     from git_automation.web import __main__ as web_main
 
     calls = _stub_uvicorn(monkeypatch)
+    # Pin tailscale detection off: with no tailnet the default is the single
+    # loopback host, which boots through the plain uvicorn.run() path. (The
+    # multi-host tailnet boot is covered in tests/test_tailscale_access.py.)
+    monkeypatch.setattr(web_main.tailscale, "self_identity", lambda: None)
     monkeypatch.delenv("GITAUTO_HOST", raising=False)
     monkeypatch.delenv("GITAUTO_TOOL", raising=False)
     monkeypatch.setenv("GITAUTO_PORT", "9001")
@@ -118,6 +122,7 @@ def test_main_rejects_unknown_tool_with_clean_message(
     from git_automation.web import __main__ as web_main
 
     calls = _stub_uvicorn(monkeypatch)
+    monkeypatch.setattr(web_main.tailscale, "self_identity", lambda: None)
     monkeypatch.delenv("GITAUTO_HOST", raising=False)
     monkeypatch.setenv("GITAUTO_TOOL", "bogus")
 

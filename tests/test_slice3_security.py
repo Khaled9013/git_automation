@@ -6,8 +6,9 @@ Covers the hardening applied in the Slice-3 security pass:
   validated repository (no ``../`` escape, no absolute path, no ``.git`` write).
 * The PTY WebSocket rejects foreign-origin handshakes (Cross-Site WebSocket
   Hijacking) while still accepting loopback / non-browser clients.
-* The web entry point fails closed on a non-loopback bind host (the whole trust
-  model rests on ``127.0.0.1``), with an explicit env opt-out.
+* The web entry point fails closed on an untrusted bind host (the whole trust
+  model rests on loopback, optionally extended to the machine's own tailnet --
+  see tests/test_tailscale_access.py), with an explicit env opt-out.
 """
 
 from __future__ import annotations
@@ -207,31 +208,46 @@ def test_terminal_ws_rejects_foreign_origin(tmp_path: Path) -> None:
 
 
 # --- Entry point: fail-closed on a non-loopback bind host -----------------
+# (Tailnet-related bind behavior is covered in tests/test_tailscale_access.py;
+# here tailscale detection is pinned to "absent" so the loopback baseline is
+# exercised deterministically on any machine.)
+
+
+@pytest.fixture()
+def no_tailnet(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(web_main.tailscale, "self_identity", lambda: None)
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost", "127.0.0.5"])
-def test_resolve_host_allows_loopback(monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+def test_resolve_hosts_allows_loopback(
+    monkeypatch: pytest.MonkeyPatch, no_tailnet: None, host: str
+) -> None:
     monkeypatch.setenv("GITAUTO_HOST", host)
     monkeypatch.delenv("GITAUTO_ALLOW_NONLOOPBACK", raising=False)
-    assert web_main._resolve_host() == host
+    assert web_main._resolve_hosts() == [host]
 
 
-def test_resolve_host_defaults_to_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_hosts_defaults_to_loopback(
+    monkeypatch: pytest.MonkeyPatch, no_tailnet: None
+) -> None:
     monkeypatch.delenv("GITAUTO_HOST", raising=False)
     monkeypatch.delenv("GITAUTO_ALLOW_NONLOOPBACK", raising=False)
-    assert web_main._resolve_host() == "127.0.0.1"
+    assert web_main._resolve_hosts() == ["127.0.0.1"]
 
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com"])
-def test_resolve_host_rejects_non_loopback(monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+def test_resolve_hosts_rejects_non_loopback(
+    monkeypatch: pytest.MonkeyPatch, no_tailnet: None, host: str
+) -> None:
     monkeypatch.setenv("GITAUTO_HOST", host)
     monkeypatch.delenv("GITAUTO_ALLOW_NONLOOPBACK", raising=False)
     with pytest.raises(SystemExit):
-        web_main._resolve_host()
+        web_main._resolve_hosts()
 
 
-def test_resolve_host_non_loopback_opt_out_warns_and_proceeds(
+def test_resolve_hosts_non_loopback_opt_out_warns_and_proceeds(
     monkeypatch: pytest.MonkeyPatch,
+    no_tailnet: None,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setenv("GITAUTO_HOST", "0.0.0.0")
@@ -239,5 +255,5 @@ def test_resolve_host_non_loopback_opt_out_warns_and_proceeds(
     import logging
 
     with caplog.at_level(logging.WARNING, logger=web_main.logger.name):
-        assert web_main._resolve_host() == "0.0.0.0"
+        assert web_main._resolve_hosts() == ["0.0.0.0"]
     assert any("SECURITY" in rec.message for rec in caplog.records)

@@ -2,19 +2,30 @@
 
 Trust model
 -----------
-The entire security model of this app rests on binding a **loopback** interface.
-The WebSocket surface (``/api/terminal`` hands out a real shell; ``/api/watch``
-and ``/api/github/events`` stream repository/GitHub activity) is *unauthenticated*
--- it is only safe because a remote host cannot reach ``127.0.0.1``. Binding a
-non-loopback host would expose that PTY/WS surface to the network, so we
-**fail closed**: refuse to start unless the host is loopback.
+The entire security model of this app rests on binding interfaces only trusted
+clients can reach. The WebSocket surface (``/api/terminal`` hands out a real
+shell; ``/api/watch`` and ``/api/github/events`` stream repository/GitHub
+activity) is *unauthenticated* -- it is only safe because the bound interfaces
+are unreachable to strangers. Two interfaces qualify:
+
+* **loopback** -- only the local user;
+* the machine's own **Tailscale tailnet** IPs -- only the operator's own
+  authenticated devices (see :mod:`git_automation.web.tailscale`).
+
+Anything else (a LAN address, ``0.0.0.0``) would expose the PTY/WS surface to
+untrusted hosts, so we **fail closed**: refuse to start unless every bind host
+is loopback or a Tailscale-range IP.
 
 Advanced users who front the app with their own authenticating proxy can opt out
 by setting ``GITAUTO_ALLOW_NONLOOPBACK=1``; this logs a loud warning and proceeds
 (and also disables the in-app Host guard -- see
-:mod:`git_automation.web.security`). The host itself is configurable via
-``GITAUTO_HOST`` (default ``127.0.0.1``) and the port via ``GITAUTO_PORT``
-(default ``8000``).
+:mod:`git_automation.web.security`). The hosts are configurable via
+``GITAUTO_HOST`` (comma-separated; the token ``tailscale`` expands to the
+machine's Tailscale IPs) and the port via ``GITAUTO_PORT`` (default ``8000``).
+When ``GITAUTO_HOST`` is unset the app binds loopback **plus** the Tailscale
+IPs when a running tailnet is detected, so it works on ``http://127.0.0.1:8000``
+and from the operator's other tailnet devices out of the box; set
+``GITAUTO_HOST=127.0.0.1`` to stay loopback-only.
 
 Unified boot
 ------------
@@ -30,9 +41,8 @@ reloader subprocess re-imports the app from scratch.
 from __future__ import annotations
 
 import logging
-import os
 
-from git_automation.web import config
+from git_automation.web import config, tailscale
 from git_automation.web.security import (
     ALLOW_NONLOOPBACK_ENV,
     is_loopback_host,
@@ -46,20 +56,33 @@ logger = logging.getLogger(__name__)
 _selected_tools = config.parse_tool_selection
 _is_loopback_host = is_loopback_host
 
+# GITAUTO_HOST entry that expands to the machine's detected Tailscale IPs.
+TAILSCALE_HOST_TOKEN = "tailscale"
 
-def _resolve_host() -> str:
-    """Return the host to bind, enforcing the loopback fail-closed policy.
 
-    Refuses to return a non-loopback host unless the operator has explicitly set
-    ``GITAUTO_ALLOW_NONLOOPBACK`` to a truthy value, in which case a loud warning
-    is logged and the requested host is honored.
+def _check_host_allowed(host: str) -> None:
+    """Enforce the fail-closed bind policy for a single host.
+
+    Loopback passes silently; a Tailscale-range IP passes with a note (the
+    tailnet is the operator's own devices, but the exposure is worth logging);
+    anything else requires the ``GITAUTO_ALLOW_NONLOOPBACK`` opt-out, which
+    logs a loud warning and proceeds.
 
     Raises:
-        SystemExit: when a non-loopback host is requested without the opt-out.
+        SystemExit: when a non-loopback, non-Tailscale host is requested
+            without the opt-out.
     """
-    host = os.environ.get(config.HOST_ENV, config.DEFAULT_HOST)
     if is_loopback_host(host):
-        return host
+        return
+
+    if tailscale.is_tailscale_ip(host):
+        logger.info(
+            "Binding Tailscale address %r: the app is reachable from devices "
+            "on your tailnet. Set %s=127.0.0.1 for loopback only.",
+            host,
+            config.HOST_ENV,
+        )
+        return
 
     if nonloopback_allowed():
         logger.warning(
@@ -69,15 +92,66 @@ def _resolve_host() -> str:
             host,
             ALLOW_NONLOOPBACK_ENV,
         )
-        return host
+        return
 
     raise SystemExit(
-        f"Refusing to start: {config.HOST_ENV}={host!r} is not a loopback address.\n"
+        f"Refusing to start: {config.HOST_ENV}={host!r} is not a loopback or "
+        "Tailscale address.\n"
         "This app exposes an unauthenticated shell/WebSocket surface and is only "
-        "safe on 127.0.0.1/::1/localhost.\n"
+        "safe on 127.0.0.1/::1/localhost or the machine's own tailnet IPs.\n"
         f"To override (advanced; front it with your own auth), set "
         f"{ALLOW_NONLOOPBACK_ENV}=1."
     )
+
+
+def _resolve_hosts() -> list[str]:
+    """Return the hosts to bind, enforcing the fail-closed policy on each.
+
+    ``GITAUTO_HOST`` unset applies the default policy: loopback, plus the
+    machine's Tailscale IPs when a running tailnet is detected -- so the app
+    serves localhost *and* the operator's other tailnet devices out of the
+    box. An explicit value is honored as given: each comma-separated entry is
+    validated by :func:`_check_host_allowed`, and the ``tailscale`` token
+    expands to the detected Tailscale IPs (a clean error when there are none).
+
+    Raises:
+        SystemExit: when a host fails the bind policy, or the ``tailscale``
+            token is used with no running tailnet.
+    """
+    requested = config.hosts_from_env()
+
+    if requested is None:
+        hosts = [config.DEFAULT_HOST]
+        identity = tailscale.self_identity()
+        if identity is not None:
+            hosts.extend(identity.ips)
+            names = ", ".join(identity.dns_names) or "no MagicDNS name"
+            logger.info(
+                "Tailscale detected: also binding %s (%s) -- reachable from "
+                "your tailnet devices. Set %s=127.0.0.1 for loopback only.",
+                ", ".join(identity.ips),
+                names,
+                config.HOST_ENV,
+            )
+        return hosts
+
+    hosts = []
+    for entry in requested:
+        if entry.lower() == TAILSCALE_HOST_TOKEN:
+            identity = tailscale.self_identity()
+            if identity is None:
+                raise SystemExit(
+                    f"Refusing to start: {config.HOST_ENV} includes "
+                    f"{TAILSCALE_HOST_TOKEN!r} but no running Tailscale was "
+                    "detected (is `tailscale up` done and the CLI on PATH?)."
+                )
+            hosts.extend(ip for ip in identity.ips if ip not in hosts)
+        elif entry not in hosts:
+            hosts.append(entry)
+
+    for host in hosts:
+        _check_host_allowed(host)
+    return hosts
 
 
 def _validate_tools() -> None:
@@ -111,19 +185,35 @@ def main() -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
-    host = _resolve_host()
+    hosts = _resolve_hosts()
     port = config.port_from_env()
     _validate_tools()
+    reload = config.reload_from_env()
 
     # The import string (rather than an app object) lets uvicorn's reloader
     # re-import the app in its subprocess; the module-level app re-reads
     # GITAUTO_TOOL there, so reload mode serves the same selection.
-    uvicorn.run(
-        "git_automation.web.app:app",
-        host=host,
-        port=port,
-        reload=config.reload_from_env(),
-    )
+    if len(hosts) == 1:
+        uvicorn.run("git_automation.web.app:app", host=hosts[0], port=port, reload=reload)
+        return
+
+    # uvicorn.run() binds a single host. For loopback + Tailscale we pre-bind
+    # one socket per host and hand them all to a single server -- or, in
+    # reload mode, to the reload supervisor, which passes them to the
+    # re-spawned server process (the same mechanism uvicorn.run() uses for
+    # its one socket).
+    configs = [
+        uvicorn.Config("git_automation.web.app:app", host=host, port=port, reload=reload)
+        for host in hosts
+    ]
+    sockets = [cfg.bind_socket() for cfg in configs]
+    server = uvicorn.Server(configs[0])
+    if configs[0].should_reload:
+        from uvicorn.supervisors import ChangeReload
+
+        ChangeReload(configs[0], target=server.run, sockets=sockets).run()
+    else:
+        server.run(sockets=sockets)
 
 
 if __name__ == "__main__":

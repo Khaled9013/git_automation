@@ -31,3 +31,21 @@ make test      # run the test suite
 make check     # lint + test
 make help      # list all targets
 ```
+
+### Access over Tailscale
+
+When a running Tailscale is detected, `make web` also binds the machine's
+Tailscale IPs, so the app is reachable from your other tailnet devices —
+`http://<tailscale-ip>:8000` or, with MagicDNS, `http://<machine>:8000` /
+`http://<machine>.<tailnet>.ts.net:8000`. Only loopback and the machine's own
+tailnet identity are served; every other bind host / `Host` / `Origin` is
+still refused (see `git_automation/web/security.py`).
+
+`GITAUTO_HOST` controls the binds explicitly (comma-separated; the token
+`tailscale` expands to the detected Tailscale IPs):
+
+```bash
+GITAUTO_HOST=127.0.0.1 make web              # loopback only (no tailnet)
+GITAUTO_HOST=127.0.0.1,tailscale make web    # explicit dual bind
+GITAUTO_HOST=tailscale make web              # tailnet only
+```

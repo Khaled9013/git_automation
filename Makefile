@@ -9,8 +9,10 @@ setup: ## Create the venv and install all dependencies (incl. dev + desktop)
 	uv sync --all-extras --group dev
 
 # All boots go through the guarded entry point (python -m git_automation.web):
-# it fails closed on a non-loopback GITAUTO_HOST and honors GITAUTO_TOOL/PORT.
-web: ## Run the FastAPI web app (all tools, auto-reload)
+# it fails closed on a non-loopback, non-Tailscale GITAUTO_HOST and honors
+# GITAUTO_TOOL/PORT. With GITAUTO_HOST unset it binds loopback plus the
+# machine's Tailscale IPs when a tailnet is detected (see README).
+web: ## Run the FastAPI web app (all tools, auto-reload; localhost + tailnet)
 	GITAUTO_RELOAD=1 uv run python -m git_automation.web
 
 # Standalone single-tool boots: GITAUTO_TOOL selects which tool module mounts.

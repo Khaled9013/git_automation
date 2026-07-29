@@ -24,8 +24,19 @@ Operators who deliberately front the app with their own authenticating proxy
 (the documented ``GITAUTO_ALLOW_NONLOOPBACK`` opt-out) get arbitrary ``Host``
 values by design, so the same opt-out disables this guard.
 
-This module is also the single source of truth for "what counts as loopback",
-shared by the WS Origin guard and the entry point's bind-host policy.
+Tailnet trust
+-------------
+Loopback has one deliberate extension: the operator's own Tailscale tailnet
+(see :mod:`git_automation.web.tailscale`), whose peers are the operator's own
+authenticated devices. :func:`is_trusted_host` therefore also accepts literal
+Tailscale-range IPs and this machine's own MagicDNS names. Neither weakens the
+rebinding/hijacking defenses: a hostname the attacker controls can never
+normalize to a literal Tailscale IP, and the MagicDNS names accepted are only
+the ones Tailscale reports for *this* machine -- resolvable solely by the
+operator's own tailnet resolver, never by DNS the attacker controls.
+
+This module is also the single source of truth for "which Host/Origin is
+trusted", shared by the WS Origin guard and the entry point's bind-host policy.
 """
 
 from __future__ import annotations
@@ -36,6 +47,8 @@ from urllib.parse import urlsplit
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+from git_automation.web import tailscale
 
 # Names/addresses a same-origin loopback client would present (in ``Host`` or
 # ``Origin``). Literal-IP loopback ranges (127.0.0.0/8, ::1) are additionally
@@ -79,6 +92,29 @@ def is_loopback_host(host: str) -> bool:
         return False
 
 
+def is_trusted_host(host: str) -> bool:
+    """Return True when ``host`` is loopback or this machine's tailnet identity.
+
+    Trusted means one of:
+
+    * a loopback name/address (:func:`is_loopback_host`);
+    * a literal IP in a Tailscale range -- on the operator's machine those
+      addresses only ever route to tailnet peers, i.e. their own devices;
+    * one of this machine's *own* MagicDNS names (``machine.tailnet.ts.net``
+      or the short ``machine``), when a running Tailscale is detected.
+
+    Everything else -- notably arbitrary hostnames, including *other*
+    machines' ``.ts.net`` names -- stays untrusted (fail closed): a rebinding
+    or hijacking page presents its own hostname, which can never be a literal
+    Tailscale IP nor a name only this machine's tailnet resolver hands out.
+    """
+    normalized = host.strip().strip("[]").lower()
+    if is_loopback_host(normalized) or tailscale.is_tailscale_ip(normalized):
+        return True
+    identity = tailscale.self_identity()
+    return identity is not None and normalized in identity.dns_names
+
+
 def host_header_hostname(host_header: str | None) -> str | None:
     """Extract the lowercase hostname from a ``Host`` header value.
 
@@ -97,7 +133,10 @@ def host_header_hostname(host_header: str | None) -> str | None:
 
 
 class HostGuardMiddleware:
-    """Reject HTTP requests / WS handshakes whose ``Host`` is not loopback.
+    """Reject HTTP requests / WS handshakes whose ``Host`` is not trusted.
+
+    Trusted means loopback or this machine's own tailnet identity
+    (:func:`is_trusted_host`).
 
     Pure ASGI middleware so it covers both ``http`` and ``websocket`` scopes
     (Starlette's ``TrustedHostMiddleware`` also mishandles bracketed IPv6
@@ -124,7 +163,7 @@ class HostGuardMiddleware:
             return
 
         hostname = host_header_hostname(raw_host.decode("latin-1"))
-        if hostname is not None and is_loopback_host(hostname):
+        if hostname is not None and is_trusted_host(hostname):
             await self.app(scope, receive, send)
             return
 
@@ -139,8 +178,9 @@ class HostGuardMiddleware:
                 "error": {
                     "code": "invalid_host",
                     "message": (
-                        "Rejected non-loopback Host header. This app only serves "
-                        "localhost; see GITAUTO_ALLOW_NONLOOPBACK for proxy setups."
+                        "Rejected untrusted Host header. This app only serves "
+                        "localhost and the machine's own tailnet (Tailscale); "
+                        "see GITAUTO_ALLOW_NONLOOPBACK for proxy setups."
                     ),
                 }
             },
