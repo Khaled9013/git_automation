@@ -33,3 +33,6 @@ local_state/
 .idea/
 *.swp
 .DS_Store
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
